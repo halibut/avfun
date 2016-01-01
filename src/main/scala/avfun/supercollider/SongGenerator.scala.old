@@ -1,0 +1,168 @@
+package avfun.supercollider
+
+import avfun.nnviz.ga.Organism
+import avfun.nnviz.ga.Organism
+import avfun.supercollider.SongStructureOrganism.SongStructureOrganismDef
+import avfun.nnviz.nn.FastNetwork
+import avfun.supercollider.SongPatternOrganism.SongPatternOrganismDef
+import avfun.nnviz.ga.Organism
+
+object SongGenerator extends App {
+  
+  def genStructureOrganism():Organism[SongStructureOrganismDef.type] = {
+    SongStructureOrganismDef.randomize;
+  }
+  
+  def genPattern(
+      structureOrg: Organism[SongStructureOrganismDef.type], 
+      patternOrg:Organism[SongPatternOrganismDef.type]) {
+    
+    val bpm = 120f
+    val beatsPerBar = 4f
+    val notesPerBar = 4f;
+    val instruments = 4f
+    val barsInPattern = 16f;
+    
+    val barLen = beatsPerBar * (60f / bpm)
+    val noteLen = (60f / bpm) / notesPerBar;
+    
+    val shortestNotePart = -1
+    val longestNotePart = 2
+    val totalBarLen = barLen
+    
+    val minBpm = 30f
+    val maxBpm = 300f
+    val minBeatsPerBar = 1f
+    val maxBeatsPerBar = 20f
+    val minNotesPerBar = 1f
+    val maxNotesPerBar = 20f
+    val minInstruments = 1f
+    val maxInstruments = 32f
+    val minBars = 1;
+    val maxBars = 16;
+         
+    val baseInputs = Array[Float](
+        //"isIntro", "isOutro", "isChorus", "isBreak",
+        0.0f, 0.0f, 0.0f, 0.0f,
+        //"beatsPerMinute", "beatsPerBar", "notesPerBar",
+        linterp(bpm, minBpm, maxBpm), linterp(beatsPerBar, minBeatsPerBar, maxBeatsPerBar), linterp(notesPerBar, minNotesPerBar, maxNotesPerBar),
+        //"instruments", "barsInPattern",
+        linterp(instruments, minInstruments, maxInstruments), linterp(barsInPattern, minBars, maxBars)
+    )
+        
+     
+    val instrumentPatterns = for(i <- 0 until instruments.toInt) yield {
+      val insBit4 = i / 16
+      val insBit3 = (i % 16) / 8 
+      val insBit2 = (i % 8) / 4
+      val insBit1 = (i % 4) / 2
+      val insBit0 = (i % 2)
+      
+      val inputs = baseInputs ++ Array[Float](
+        //"instrumentsBit0", "instrumentsBit1", "instrumentsBit2", "instrumentsBit3", "instrumentsBit4",
+        insBit0.toFloat, insBit1.toFloat, insBit2.toFloat, insBit3.toFloat, insBit4.toFloat,
+        //"lastNoteOffset", "lastNoteLengthOn", "lastNoteLengthOff"
+        0.0f, 0.0f, 0.0f
+      )
+      
+      val net:FastNetwork = patternOrg.organismDefintion.expressPhenotype(patternOrg)(SongPatternOrganismDef.networkConv)
+
+      val bars = for(b <- 0 until barsInPattern.toInt) yield { 
+        getBarPattern(net, inputs, totalBarLen, shortestNotePart, longestNotePart, noteLen)
+      }
+      
+      bars.flatten
+    }
+    
+    var insInd = 0
+    for(pat <- instrumentPatterns) {
+      val c6 = DMajorScale.originNote
+      val notes = pat.map(x => CMajorScale.getOffset(c6, x._1)).map(""+_+", \\rest").mkString(", ")
+      val durs = pat.map(x => ""+x._2+", "+x._3).mkString(", ")
+      
+      println("Pbind(")
+      println("  \\instrument, \\smooth"+((insInd%4)+1)+",")
+      println("  \\midinote, Pseq(["+notes+"], 1),")
+      println("  \\dur, Pseq(["+durs+"], 1)")
+      println(").play(quant:1.0);")
+      
+      insInd+=1
+    }
+  }
+
+  
+  def getBarPattern(net: FastNetwork, inputs: Array[Float], barLen:Float, shortestNotePart:Int, longestNotePart:Int, noteLen:Float):Seq[(Int, Float, Float)] = {
+    var len = 0f
+    val maxOffset = 12f
+    val minOffset = -12f
+    
+    val shortestNote = noteLen * math.pow(2, shortestNotePart).toFloat
+    
+    var pattern = Vector[(Int,Float,Float)]()
+    while(len < (barLen - 0.001f)) {
+      val outputs = net.calc(inputs)
+      val noteOffset = outputs(outputs.length -3)
+      val noteOnLength = outputs(outputs.length -2)
+      val noteOffLength = outputs(outputs.length -1)
+      
+      inputs(inputs.length-3) = noteOffset
+      inputs(inputs.length-2) = noteOnLength
+      inputs(inputs.length-1) = noteOffLength
+      
+      val offsetInt = linterp(noteOffset, -1f, 1f) * (maxOffset-minOffset) + minOffset 
+      val noteOn = linterp(noteOnLength, -1f, 1f) * (longestNotePart-shortestNotePart) + shortestNotePart 
+      val qNoteOn = quantize(noteLen * math.pow(2, math.floor(noteOn)).toFloat, shortestNote)
+      val noteOff = linterp(noteOffLength, -1f, 1f) * (longestNotePart-shortestNotePart) + shortestNotePart 
+      val qNoteOff = quantize(noteLen * math.pow(2, math.floor(noteOff)).toFloat, shortestNote)
+      
+      if(qNoteOn + qNoteOff > 0.0f) {
+        if(len+qNoteOn+qNoteOff < (barLen + 0.001f)) {
+          pattern :+= (offsetInt.toInt, qNoteOn, qNoteOff)
+    		  len += qNoteOn + qNoteOff
+        }
+        else if(len+qNoteOn < (barLen + 0.001f)){
+          pattern :+= (offsetInt.toInt, qNoteOn, (barLen - qNoteOn - len))
+    		  len = barLen
+        }
+        else {
+          pattern :+= (offsetInt.toInt, (barLen - len), 0.0f)
+          len = barLen
+        }
+      }
+      
+    }
+    
+    pattern.toSeq
+  }
+  
+  def linterp(amount:Float, min:Float, max:Float):Float = {
+    val range = (max - min)
+    ((amount-min) / range)
+  }
+  
+  def quantize(amount:Float, quantInterval:Float):Float = {
+    val times = (amount / quantInterval).toInt
+    amount * times.toFloat
+  }
+  
+  val structureOrg = SongStructureOrganismDef.randomize;
+  
+  val patternOrg1 = SongPatternOrganismDef.randomize
+  val patternOrg2 = SongPatternOrganismDef.randomize
+  val patternOrg3 = SongPatternOrganismDef.mate(patternOrg1, patternOrg2)
+  
+  println("//ORG 1")
+  println("(");
+  genPattern(structureOrg, patternOrg1);
+  println(")");
+  
+  println("\n\n//ORG 2")
+  println("(");
+  genPattern(structureOrg, patternOrg2);
+  println(")");
+  
+  println("\n\n//ORG 3")
+  println("(");
+  genPattern(structureOrg, patternOrg3);
+  println(")");
+}

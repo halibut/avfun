@@ -1,0 +1,38 @@
+package avfun.nnviz.nn
+
+class MultiLayerPerceptronNetwork(val layers:Seq[NeuralNetwork]) extends NeuralNetwork {
+  
+  layers.sliding(2).zipWithIndex.foreach{ case (ls,ind) =>
+    val l1 = ls(0) 
+    val l2 = ls(1)
+    require(l1.numOutputs == l2.numOutputs, s"Layers[${ind}-${ind+1}] - Layer with ${l1.numOutputs} outputs does not match next layer's inputs ${l2.numInputs}")
+  }
+  
+  
+  def calc(inputs: Array[Float]):Array[Float] = {
+    var layerXfer = inputs
+    
+    for(layer <- layers){
+      layerXfer = layer.calc(layerXfer)
+    }
+    
+    layerXfer
+  }
+
+  def numHiddenNeurons: Int = {
+    layers.drop(1).dropRight(1).map(_.numOutputs).sum
+  }
+
+  def numInputs: Int = {
+    layers.head.numInputs
+  }
+
+  def numOutputs: Int = {
+    layers.last.numOutputs
+  }
+}
+
+object MultiLayerPerceptron{
+  
+  
+}

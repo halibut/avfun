@@ -1,0 +1,9 @@
+/.cache*
+/.classpath
+/.project
+/.settings
+/.worksheet
+/out
+**/target/
+/*.wav
+/sc-orgs

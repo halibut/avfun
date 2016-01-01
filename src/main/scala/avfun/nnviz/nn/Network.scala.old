@@ -1,0 +1,252 @@
+package avfun.nnviz.nn
+
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{Map => MutMap}
+import scala.collection.Map
+import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.io.BufferedReader
+import java.io.BufferedInputStream
+import java.util.regex.Pattern
+
+class Network extends NeuralNetwork{
+
+  private[nn] val _inputNeuronNames = ArrayBuffer[String]()
+  private[nn] val _inputNeuronInds = ArrayBuffer[Int]()
+  private[nn] val _outputNeuronNames = ArrayBuffer[String]()
+  private[nn] val _outputNeuronInds = ArrayBuffer[Int]()
+  private[nn] val _inputNeurons = MutMap[String,InputNeuron]()
+  private[nn] val _outputNeurons = MutMap[String,Neuron]()
+  private[nn] val _neurons = ArrayBuffer[Neuron]()
+  private[nn] val _connections = ArrayBuffer[(Int,Int,Float)]()
+  
+  private[nn] var _activationFunc:ActivationFunc = LinearSaturationActivation
+  
+  def addNeuron(tp:Network.NeuronType = Network.NormalNeuron):Network.NetworkNeuron = {
+    val neuron = tp match {
+      case Network.NormalNeuron => new Neuron()
+      case Network.InputNeuron => new InputNeuron()
+    }
+    
+    val id = _neurons.size
+    _neurons += neuron
+    Network.NetworkNeuron(id, neuron, this)
+  }
+  
+  def addInput(name:String):Network.NetworkNeuron = {
+    val n = addNeuron(Network.InputNeuron)
+    this._inputNeurons += name -> n.n.asInstanceOf[InputNeuron]
+    this._inputNeuronNames += name
+    this._inputNeuronInds += n.id
+    n
+  }
+  
+  def addOutput(name:String):Network.NetworkNeuron = {
+    val n = addNeuron(Network.NormalNeuron)
+    this._outputNeurons += name -> n.n
+    this._outputNeuronNames += name
+    this._outputNeuronInds += n.id
+    n
+  }
+  
+ def addConnection(from:Network.NetworkNeuron, to:Network.NetworkNeuron, weight:Float){
+   require(from.net == this && to.net == this, "From and To neurons must be for this network.")
+   addConnection(from.id, to.id, weight)
+ }
+ 
+ def addConnection(from:Int, to:Int, weight:Float){
+   val fromN = _neurons(from)
+   val toN = _neurons(to)
+   val conn = new NeuronInput(fromN, weight)
+   toN.addInput(conn)
+   _connections += ((from, to, weight))
+ }
+ 
+  
+  private def processNeurons(){
+    
+    var i = 0
+    val l = _neurons.size
+    while(i < l){
+      _neurons(i).calcIntermediateVal(_activationFunc)
+      i+=1
+    }
+    i=0
+    while(i < l){
+      _neurons(i).updateNeuronVal()
+      i+=1
+    }
+  }
+ 
+  def calc(inputs: Map[String,Float]):Map[String,Float] = {
+    for( (n,v) <- inputs.toSeq){
+      _inputNeurons.get(n).foreach { n => n.setVal(v) }
+    }
+    
+    processNeurons()
+    
+    _outputNeurons.map{case (name,neuron) => (name,neuron.curVal)}
+  }
+  
+  def numInputs = _inputNeuronInds.length
+  def numOutputs = _outputNeuronInds.length
+  def numHiddenNeurons = _neurons.length - numInputs - numOutputs
+  
+  def calc(inputs: Array[Float]):Array[Float] = {
+    var i = 0
+    var l = inputs.size
+    while(i < l){
+      _neurons(_inputNeuronInds(i)).asInstanceOf[InputNeuron].setVal(inputs(i))
+      i+=1
+    }
+    
+    processNeurons()
+    
+    i = 0
+    l = _outputNeuronInds.size
+    val outputs = new Array[Float](l)
+    while(i < l){
+      outputs(i) = _neurons(_outputNeuronInds(i)).curVal
+      i+=1
+    }
+    outputs
+  }
+  
+}
+
+object Network{
+  
+  def random(inputs:Seq[String],outputs:Seq[String],neurons:Int,connections:Int,weightRange:(Float,Float)=(-1f,1f)):Network = {
+    val net = new Network
+    
+    inputs.foreach{iName => net.addInput(iName)}
+    outputs.foreach{oName => net.addOutput(oName)}
+    0 until neurons foreach{i => net.addNeuron()}
+    
+    val numNeurons = inputs.size + outputs.size + neurons
+    val rng = weightRange._2 - weightRange._1
+    
+    var i = 0
+    while(i < connections){
+      val fromI = (math.random * numNeurons).toInt
+      val toI = (math.random * numNeurons).toInt
+      val weight = ((math.random * rng) + weightRange._1).toFloat
+      
+      //Don't create a connection to an input neuron, flip connection if possible
+      if(toI >= inputs.size){
+        net.addConnection(fromI, toI, weight)
+      }
+      else if(fromI >= inputs.size){
+        net.addConnection(toI, fromI, weight)
+      }
+      else{
+        //Don't count this connection since we didn't add it
+        i-=1
+      }
+      
+      i+=1
+    }
+    
+    net
+  }
+  
+  case class NetworkNeuron(val id:Int, private[Network] val n:Neuron, private[Network] val net:Network){
+    def ~>(other:NetworkNeuron,weight:Float){
+      net.addConnection(this, other, weight)
+    }
+  }
+  
+  sealed trait NeuronType
+  case object NormalNeuron extends NeuronType
+  case object InputNeuron extends NeuronType
+  
+  def serialize(net:Network,os:OutputStream){
+    val writer = new OutputStreamWriter(os)
+    
+    val revInputMap = net._inputNeurons.toSeq.map(v => v._2 -> v._1).toMap
+    val revOutputMap = net._outputNeurons.toSeq.map(v => v._2 -> v._1).toMap
+    
+    for(ni <- net._neurons.zipWithIndex){
+      val (neuron,id) = ni
+      var line:String = null 
+      if(neuron.isInstanceOf[InputNeuron]){
+        revInputMap.get(neuron.asInstanceOf[InputNeuron]).foreach{inputName =>
+          line = s"IN[${id}]=${inputName}"
+        }
+      }
+      revOutputMap.get(neuron).foreach{outputName =>
+        line = s"ON[${id}]=${outputName}"
+      }
+      if(line == null){
+        line = s"NN[${id}]"
+      }
+      writer.write(line)
+      writer.write("\n")
+    }
+    
+    for(conn <- net._connections){
+      writer.write(f"C[${conn._1},${conn._2}]=${conn._3}%f\n")
+    }
+    writer.flush()
+  }
+  
+  def deserialize(is:InputStream):Network = {
+    val reader = new BufferedReader(new InputStreamReader(is))
+
+    val net = new Network
+    
+    var line = ""
+    while(line != null){
+      line = line.replaceAll("^\\s+", "").replaceAll("\\s+$","")
+      
+      val openBracketInd = line.indexOf('[')
+      if(openBracketInd > 0){
+        val tp = line.substring(0, openBracketInd)
+        tp match {
+          case "IN" => {
+            net.addInput(readNeuronName(line))
+          }
+          case "ON" => {
+            net.addOutput(readNeuronName(line))
+          }
+          case "NN" => {
+            net.addNeuron(NormalNeuron)
+          }
+          case "C" => {
+            readConnectionInfo(line).foreach{c =>
+              net.addConnection(c._1, c._2, c._3)
+            }
+          }
+          case _ => { }
+        }
+      }
+      
+      line = reader.readLine()
+    }
+    
+    net
+  }
+
+  private def readNeuronName(serializedLine: String):String = {
+    val ind = serializedLine.indexOf('=')
+    if(ind >= 0){
+      serializedLine.substring(ind+1)
+    }
+    else{
+      null
+    }
+  }
+  private val connInfoPattern = Pattern.compile("^C\\s*\\[\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\]\\s*=\\s*(\\-?\\d*(\\.\\d+)?)\\s*$") 
+  private def readConnectionInfo(serializedLine: String):Option[(Int,Int,Float)] = {
+    val matcher = connInfoPattern.matcher(serializedLine)
+    if(matcher.matches()){
+      Some((matcher.group(1).toInt, matcher.group(2).toInt, matcher.group(3).toFloat))
+    }
+    else{
+      None
+    }
+  }
+}
+

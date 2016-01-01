@@ -1,0 +1,39 @@
+package avfun.supercollider
+
+import avfun.nnviz.ga.OrganismDef
+import avfun.nnviz.ga.ChromosomeDef
+import avfun.nnviz.ga.NumericChromosomeDef
+import avfun.nnviz.ga.NumericExtImplicits._
+import avfun.nnviz.nnga.FastNetworkOrganismDefinition
+import avfun.nnviz.nn.ActivationFunc
+import avfun.nnviz.nn.LinearSaturationActivation
+
+object SongPatternOrganism {
+  
+  val inputNames = Seq("isIntro", "isOutro", "isChorus", "isBreak", 
+        "beatsPerMinute", "beatsPerBar", "notesPerBar", 
+        "instruments", "barsInPattern",
+        "instrumentsBit0", "instrumentsBit1", "instrumentsBit2", "instrumentsBit3", "instrumentsBit4",
+        "lastNoteOffset", "lastNoteLengthOn", "lastNoteLengthOff");
+  
+  val outputNames = Seq("noteOffset", "noteLengthOn", "noteLengthOff");
+  
+  val numInputs = inputNames.size
+  val numOutputs = outputNames.size
+  val numHiddenNeurons = 20 * (numInputs + numOutputs) 
+  val numConnections = 10 * (numInputs + numOutputs + numHiddenNeurons)
+  
+  object SongPatternOrganismDef extends FastNetworkOrganismDefinition(
+    name = "Song Pattern Organism", 
+    numInputs = SongPatternOrganism.numInputs,
+    numOutputs = SongPatternOrganism.numOutputs,
+    numHiddenNeurons = SongPatternOrganism.numHiddenNeurons,
+    numConnections = SongPatternOrganism.numConnections,
+    activationFunc = LinearSaturationActivation) {
+    
+    implicit val networkConv = FastNetworkOrganismDefinition.implicitlyGetFastNetworkConverter(SongPatternOrganismDef)
+  }
+  
+}
+
+
