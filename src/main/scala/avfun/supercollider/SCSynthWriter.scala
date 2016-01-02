@@ -149,15 +149,22 @@ object SCSynthWriter {
   }
   
   def getSynthFromSavedDefs():Organism[SynthOrganismDef.type] = {
+    //val synthdefsDir = new File("sc-orgs/synthdef")
+    
     val synthFiles = new File("sc-orgs/synthdef").listFiles()
-    val f1 = synthFiles((math.random * synthFiles.length).toInt)
-    val f2 = synthFiles((math.random * synthFiles.length).toInt)
     
-    println(s"//Synth - ${f1.getName} + ${f2.getName}")
+    val o1 = if(synthFiles.length == 0) {
+      SynthOrganismDef.randomize
+    } else {
+      getSynthFromFile(synthFiles((math.random * synthFiles.length).toInt))
+    }
     
-    val o1 = getSynthFromFile(f1)
-    val o2 = getSynthFromFile(f2)
-    
+    val o2 = if(synthFiles.length < 10) {
+      SynthOrganismDef.randomize
+    } else {
+      getSynthFromFile(synthFiles((math.random * synthFiles.length).toInt))
+    }
+        
     SynthOrganismDef.mate(o1, o2)
   }
   
