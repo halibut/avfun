@@ -232,7 +232,8 @@ object SongGenerator2 extends App {
     val parts = Seq(songStructure.hasBreak, songStructure.hasChorus, songStructure.hasIntro, songStructure.hasOutro)
       .filter(_ == true).size
     
-    if(parts >= 3 && Seq(2, 3, 4, 5).exists(_ == songStructure.noteDiv) && songStructure.instruments >= 3) {
+    if(parts >= 4 && Seq(2, 3, 4, 5).exists(_ == songStructure.noteDiv) 
+        && songStructure.instruments >= 3 && songStructure.instruments <= 8) {
       (songOrg, songStructure)
     }
     else {
@@ -251,7 +252,7 @@ object SongGenerator2 extends App {
     
     val patternOrg = genPatternStructureOrganism()
     
-    val scale = new MajorScale(4, MusicScale.G)
+    val scale = new MajorScale(4, MusicScale.D)
     val rootNote = scale.originNote
     
   

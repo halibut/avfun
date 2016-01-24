@@ -1,0 +1,13 @@
+{
+ "tmpDir": {
+  "loc": "1"
+ },
+ "outputDir": {
+  "loc": "2"
+ },
+ "superCollider": {
+  "installDir": {
+   "loc": "3"
+  }
+ }
+}

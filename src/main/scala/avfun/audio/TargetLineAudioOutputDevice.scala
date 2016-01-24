@@ -19,7 +19,7 @@ class TargetLineAudioOutputDevice(val bufferSamples:Int = 1470, threaded:Boolean
   /**
    * 44.1 kHz (CD quality sampling rate)
    */
-  override val samplesPerSecond:Int = 44100
+  override val samplesPerSecond:Int = 48000
   
   override val latencySamples: Int = bufferSamples
   
@@ -67,7 +67,7 @@ class TargetLineAudioOutputDeviceRunnable(bufferSamples:Int) extends Runnable{
    * Stereo, 44.1 kHz (CD quality), 16 bit, big-endian, signed PCM
    * This is a very common audio format that should work on almost all modern audio drivers
    */
-  val audioFormat = new AudioFormat(44100, bytesPerSample * 8, 2, true, true);
+  val audioFormat = new AudioFormat(48000, bytesPerSample * 8, 2, true, true);
   
   //Lazily create and open a line to start writing audio data to the speakers
   private lazy val _outputLine = {

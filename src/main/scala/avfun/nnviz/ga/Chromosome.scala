@@ -22,6 +22,7 @@ abstract class NumericChromosomeDef[T : ClassTag](implicit val num:Numeric[T], v
   
   def minVal:T
   def maxVal:T
+  def range:T = maxVal-minVal
   def crossoverTimes:Int
   
   def mutateMagnitude:T
@@ -61,7 +62,11 @@ abstract class NumericChromosomeDef[T : ClassTag](implicit val num:Numeric[T], v
   }
   
   protected def validRandomValue:T = {
-    numExt.fromDouble((maxVal - minVal).toDouble * math.random) + minVal
+    val randMult = math.random * range.toDouble()
+    
+    val rand = minVal + numExt.fromDouble(randMult)
+    
+    rand
   }
   
   def randomize:Chromosome[T] = {

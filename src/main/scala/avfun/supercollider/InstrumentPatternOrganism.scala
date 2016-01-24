@@ -85,7 +85,7 @@ object InstrumentPatternOrganism {
       inputs(inputs.length-2) = rawNoteOn
       inputs(inputs.length-1) = rawLength
     
-      val maxRange = structure.noteOffsetRange + 3
+      val maxRange = structure.noteOffsetRange
       
       val absOffset = MathUtil.bitsToInt(offsets) % maxRange
       

@@ -8,12 +8,17 @@ import java.io.FileOutputStream
 import java.io.FileInputStream
 import avfun.nnviz.ga.Organism
 
+import avfun.supercollider.model._
+
 object SCSynthWriter {
   
   def writeSynthDef(synthDef:SynthDef, synthName:String, withComments:Boolean):String = {
+    val longestUGen = synthDef.longestUGen.get.envelopeType.minTime
+    val hasSustain = synthDef.ugens.filter(_.isDefined).map(_.get).exists(_.envelopeType == EnvelopeADSR)
+    
     val sb = new StringBuilder
     
-    sb.append("SynthDef(\"").append(synthName).append("\", { arg out = 0, freq = 440, amp = 0.75, pan = 0, gate = 1;\n")
+    sb.append("SynthDef(\"").append(synthName).append("\", { arg out = 0, freq = 440, amp = 0.75, pan = 0, gate = 1, timeScale = 1;\n")
     
     //Get the declared 
     val oscWithInd = synthDef.ugens.zipWithIndex.filter(_._1.isDefined).map(x => (x._2, x._1.get))
@@ -21,6 +26,7 @@ object SCSynthWriter {
     if(!oscWithInd.isEmpty) {
       //Print out the variable declarations for the oscillators
       sb.append("  var ").append(oscWithInd.map("osc"+_._1).mkString(", ")).append(";\n")
+      sb.append("  var ").append(oscWithInd.map("osc"+_._1+"Env").mkString(", ")).append(";\n")
       sb.append("  var ").append(oscWithInd.map("osc"+_._1+"Filter").mkString(", ")).append(";\n")
     }
     
@@ -33,12 +39,15 @@ object SCSynthWriter {
     
     //Optional frequency vibrato
     synthDef.lfoFreq.foreach{lfo =>
-      sb.append("  adjFreq = freq + (").append(lfo.amount * 20f).append(" * SinOsc.ar(").append(lfo.speed).append(", Rand(0, 2.0)));\n")
+      sb.append("  adjFreq = adjFreq + (").append(lfo.amount * 20f).append(" * SinOsc.ar(").append(lfo.speed).append(", Rand(0, 2.0)));\n")
     }
     
     //Optional amplitude (level) vibrato
     synthDef.lfoAmp.foreach{lfo =>
-      sb.append("  adjAmp = amp + (").append(lfo.amount).append(" * SinOsc.ar(").append(lfo.speed).append(", Rand(0, 2.0)));\n")
+      val amp = lfo.amount
+      sb.append("  adjAmp = (adjAmp - ").append(amp * 0.5f)
+        .append(") + (").append(amp * 0.5f)
+        .append(" * SinOsc.ar(").append(lfo.speed).append(", Rand(0, 2.0)));\n")
     }
     
     for((ind, ugenDef) <- oscWithInd) {
@@ -48,23 +57,26 @@ object SCSynthWriter {
         sb.append("  //UGen-").append(ind).append(" ").append(printUGenComment(ugenDef)).append("\n")
       }
       sb.append("  ").append(oscName).append(" = ").append(printUGenDefinition(ugenDef)).append(";\n")
+      sb.append("  ").append(oscName).append("Env = ").append(printUGenEnvDefinition(ugenDef, longestUGen)).append(";\n")
       
       ugenDef.filterType.foreach { filter  =>
         sb.append("  ").append(oscName).append("Filter = ").append(printUGenFilterDefinition(ugenDef, oscName)).append(";\n")
-        val amtOrig = math.abs(ugenDef.vars(0))
-        val amtFilter = math.abs(ugenDef.vars(1))
-        val totalAmp = math.max(amtOrig, amtFilter).toFloat
-        sb.append("  ").append(oscName).append(" = Mix([").append(oscName).append(" * ").append(amtOrig / totalAmp)
-          .append(", ").append(oscName).append("Filter * ").append(amtFilter / totalAmp).append("]);\n")
+        val amtOrig = 1f - filter.filterAmt
+        val amtFilter = filter.filterAmt
+        val totalAmp = math.max(amtOrig, amtFilter).toFloat * .75f
+        sb.append("  ").append(oscName).append(" = Mix([(").append(oscName).append(" * ").append(math.min(1f, amtOrig / totalAmp))
+          .append("), (").append(oscName).append("Filter * ").append(math.min(1f, amtFilter / totalAmp)).append(")]);\n")
       }
-//      sb.append("  ").append(oscName).append(" = ").append(oscName).append(" * ").append(printUGenEnvDefinition(ugenDef)).append(";\n")
+      
+      sb.append("  ").append(oscName).append(" = ")
+        .append(ugenDef.amp).append(" * ").append(oscName).append(" * ").append(oscName).append("Env;\n")
     }
     
     sb.append("\n")
     sb.append("  osc = adjAmp * Mix([").append(oscWithInd.map("osc"+_._1).mkString(", ")).append("]);\n")
-    sb.append("  osc = osc * ").append(printUGenEnvDefinition(oscWithInd.head._2)).append(";\n")
+    //sb.append("  osc = osc * ").append(printUGenEnvDefinition(oscWithInd.head._2)).append(";\n")
     sb.append("\n")
-    sb.append("  Out.ar(out, Pan2.ar(osc, 0));\n")
+    sb.append("  Out.ar(out, Pan2.ar(osc, pan));\n")
     sb.append("})");
         
     sb.toString
@@ -76,60 +88,103 @@ object SCSynthWriter {
   
   private def printUGenDefinition(ugenDef:UGenDef):String = {
     val amp = ugenDef.amp;
-    val phase = 0.5f + 0.5f * ugenDef.vars(0)
-    val width = 0.5f + 0.5f * ugenDef.vars(1)
-    val freqMult = ugenDef.freqMult
     
-    val freqDef = s"(adjFreq * ${freqMult})"
+    val freqDef = ugenDef.freqControl match {
+      case sf:StaticFreq => s"${sf.freq}"
+      case df:DynamicFreq => s"(adjFreq * ${df.totalFreqMult})"
+    }
     
-    ugenDef.uGenType % 7 match {
-      case 0 => {
-        s"${amp} * SinOsc.ar(${freqDef}, ${phase})"
+    ugenDef.uGenType match {
+      case UGenSin(phase) => {
+        s"SinOsc.ar(${freqDef}, ${phase})"
       }
-      case 1 => {
-        s"${amp} * Pulse.ar(${freqDef}, ${phase})"
+      case UGenPulse(phase) => {
+        s"Pulse.ar(${freqDef}, ${phase})"
       }
-      case 2 => {
-        s"${amp} * Saw.ar(${freqDef})"  
+      case UGenSaw() => {
+        s"Saw.ar(${freqDef})"  
       }
-      case 3 => {
-        s"${amp} * LFTri.ar(${freqDef}, ${4f * phase})"  
+      case UGenLFTri(phase) => {
+        s"LFTri.ar(${freqDef}, ${4f * phase})"  
       }
-      case 4 => {
-        s"${amp} * VarSaw.ar(${freqDef}, ${phase}, ${width})"
+      case UGenVarSaw(phase, width) => {
+        s"VarSaw.ar(${freqDef}, ${phase}, ${width})"
       }
-      case 5 => {
-        val start = 5f + 50f + ugenDef.vars(0) * 50f
-        val end = 5f + 50f + ugenDef.vars(1) * 50f 
-        val time = 0.01f + 1f + ugenDef.vars(2) * 1f
-        s"${amp} * Blip.ar(${freqDef} , Line.kr(${start},${end},${time},doneAction: 2))"
+      case UGenBlip(start, end, time) => {
+        s"Blip.ar(${freqDef} , Line.kr(${start},${end},${time},doneAction: 0))"
       }
-      case 6 => {
-        val formFreqMul = math.max(1, ugenDef.vars.slice(0, 4).map(x => if (x > 0.0f) 1 else 0).sum) 
-        val bwFreqMul = formFreqMul * math.max(1, ugenDef.vars.slice(4, 8).map(x => if (x > 0.0f) 1 else 0).sum)
-        
-        s"${amp} * Formant.ar(${freqDef}, ${formFreqMul} * adjFreq, ${bwFreqMul} * adjFreq)"
+      case UGenFormant(formFreqMul, bwFreqMul) => {
+        s"Formant.ar(${freqDef}, ${formFreqMul} * ${freqDef}, ${bwFreqMul} * ${freqDef})"
+      }
+      case UGenWhiteNoise() => {
+        s"WhiteNoise.ar(1)"
+      }
+      case _ => {
+        "//Not a valid uGen #"
       }
     }
   }
   
   private def printUGenFilterDefinition(ugenDef:UGenDef, oscName:String):String = {
-    s"${oscName}"
+    val freqDef = ugenDef.freqControl match {
+      case sf:StaticFreq => s"${sf.freq}"
+      case df:DynamicFreq => s"(adjFreq * ${df.totalFreqMult})"
+    }
+    
+    val filter = ugenDef.filterType.get
+    
+    def relFreq(relative:Boolean, freq:Float, followEnv:Option[Float]):String = {
+      val freqStr = if(relative) s"(${freqDef} + ${freq})" else s"${math.abs(freq)}"
+      
+      followEnv match {
+        case None => freqStr
+        case Some(f) => s"${freqStr} * (1 + (${oscName}Env * ${f}))" 
+      }
+    }
+    
+    filter match {
+      case LowPassFilter(freq, relative, followEnv, _) => 
+        s"LPF.ar(${oscName}, ${relFreq(relative, freq, followEnv)})"
+      case HighPassFilter(freq, relative, followEnv, _) => 
+        s"HPF.ar(${oscName}, ${relFreq(relative, -freq, followEnv)})"
+      case BandPassFilter(lowFreq, highFreq, relative, followEnv, _) => 
+        s"LPF.ar(HPF.ar(${oscName}, ${relFreq(relative, lowFreq, followEnv)}), ${relFreq(relative, -highFreq, followEnv)})"
+      case FormletFilter(resFreq, attackTime, decayTime, _) =>
+        s"Formlet.ar(${oscName}, ${freqDef} * ${resFreq}, ${attackTime}, ${decayTime})"
+      case MoogFilter(cutoffFreq, resAmt, followEnv, _) => 
+        s"MoogFF.ar(${oscName}, ${relFreq(true, cutoffFreq, followEnv)}, ${resAmt})"
+      case _ => "//Not a valid Filter"
+    }
   }
   
-  private def printUGenEnvDefinition(ugenDef:UGenDef):String = {
-    val v = ugenDef.vars
-    val a = v(4) * 0.5f + 0.5f
-    val d = v(5) * 0.5f + 0.5f
-    val s = v(6) * 0.5f + 0.5f
-    val r = v(7) * 0.5f + 0.5f
+  private def printUGenEnvDefinition(ugenDef:UGenDef, minTime:Float):String = {
+    val timeDiff = minTime - ugenDef.envelopeType.minTime
+    
+    val doneAction = if(ugenDef.envelopeType.hasSustain) {
+      2
+    } else if(!ugenDef.envelopeType.hasSustain && timeDiff <= 0f) {
+      2
+    } else {
+      0
+    }
     
     ugenDef.envelopeType match {
-      case EnvelopeASDR() => {
-        s"EnvGen.ar(Env.adsr(${a * 0.25f}, ${d * 0.25f}, ${s * 0.5f}, ${r * .5f + .25f}, 1), gate, doneAction: 2)"
+      case adsr:EnvelopeADSR => {
+        val a = adsr.attackTime
+        val d = adsr.decayTime
+        val s = adsr.sustainLevel
+        val r = adsr.releaseTime
+    
+        s"EnvGen.ar(Env.adsr(${a}, ${d}, ${s}, ${r + timeDiff}, 1), gate, timeScale: timeScale, doneAction: ${doneAction})"
       }
-      case EnvelopePerc() => {
-        s"EnvGen.ar(Env.perc(${a * 0.05f}, ${d + 0.1f}), gate, doneAction: 2)"
+      case perc:EnvelopePerc => {
+        val a = perc.attackTime
+        val r = perc.releaseTime
+        
+        s"EnvGen.ar(Env.perc(${a}, ${r}), gate, timeScale: timeScale, doneAction: ${doneAction})"
+      }
+      case _ => {
+        "//Not a valid Envelope"
       }
     }
   }
@@ -151,7 +206,7 @@ object SCSynthWriter {
   def getSynthFromSavedDefs():Organism[SynthOrganismDef.type] = {
     //val synthdefsDir = new File("sc-orgs/synthdef")
     
-    val synthFiles = new File("sc-orgs/synthdef").listFiles()
+    val synthFiles = new File("sc-orgs/synthdef/synths").listFiles()
     
     val o1 = if(synthFiles.length == 0) {
       SynthOrganismDef.randomize
@@ -170,9 +225,13 @@ object SCSynthWriter {
   
   def getGoodSynthFromSavedDefs():(Organism[SynthOrganismDef.type],SynthDef) = {
     var org:Organism[SynthOrganismDef.type] = null
-    var synthDef = SynthDef(None, None, Seq(), Seq())
+    var synthDef = SynthDef(None, None, Seq(), UGenVars())
     
-    while(synthDef.ugens.filter(_.isDefined).size == 0) {
+    while(!synthDef.isValid 
+        || synthDef.ugens.filter(_.isDefined).exists(_.get.uGenType.isInstanceOf[UGenWhiteNoise])
+        || synthDef.ugens.filter(_.isDefined).exists(_.get.filterType.map(_.isInstanceOf[HighPassFilter]).getOrElse(false))
+        || synthDef.ugens.filter(_.isDefined).exists(_.get.filterType.map(_.isInstanceOf[BandPassFilter]).getOrElse(false))
+        || synthDef.ugens.filter(_.isDefined).exists(_.get.freqControl.isInstanceOf[StaticFreq])) {
       org = getSynthFromSavedDefs()
       synthDef = SynthOrganism.getSynthDefinition(org)
     }
@@ -182,7 +241,7 @@ object SCSynthWriter {
   
   def saveSynthDef(name:String, org:Organism[SynthOrganismDef.type]):Unit = {
     val orgSerializer = new OrganismSerializer()
-    val orgFile = new File("sc-orgs/synthdef", name+".org")
+    val orgFile = new File("sc-orgs/synthdef/synths", name+".org")
     if(orgFile.exists()){
       orgFile.delete()
     }
@@ -197,6 +256,12 @@ object SCSynthWriter {
   }
   
   def main(args:Array[String]){
+    
+//    println(writeSynthDef(SynthDefs.Drums.kick, "kick", true)+".add;")
+//    println(writeSynthDef(SynthDefs.Drums.openHat, "open-hat", true)+".add;")
+//    println(writeSynthDef(SynthDefs.Drums.closedHat, "closed-hat", true)+".add;")
+//    println(writeSynthDef(SynthDefs.Drums.snare, "snare", true)+".add;")
+//    println(writeSynthDef(SynthDefs.Drums.clap, "clap", true)+".add;")
     
     for(i <- 1 until 5) {
       val (org,synthDef) = getGoodSynthFromSavedDefs()

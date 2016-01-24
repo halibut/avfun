@@ -20,27 +20,19 @@ case class SongStructure(
     hasIntro:Boolean, hasOutro:Boolean, hasChorus:Boolean, hasBreak:Boolean,
     bpm:Float, instruments:Int, noteDiv:Int)
 
-sealed trait EnvelopeType
-case class EnvelopeASDR() extends EnvelopeType
-case class EnvelopePerc() extends EnvelopeType
-
-case class LFODef(speed:Float, amount:Float)
-case class UGenDef(uGenType:Int, amp:Float, freqMult:Float, envelopeType:EnvelopeType, filterType:Option[Int], vars:Seq[Float])
-case class SynthDef(lfoAmp:Option[LFODef], lfoFreq:Option[LFODef], ugens:Seq[Option[UGenDef]], vars:Seq[Float])
-    
 object MathUtil {
-  def intToBits(intNum:Int)(bitNum:Int): Float = {
+  def intToBits(intNum:Int, zero:Float = 0f, one:Float = 1f)(bitNum:Int): Float = {
     if(bitNum == 0) {
-      intNum % 2
+      if(intNum % 2 == 1) one else zero
     }
     else {
-      intToBits(intNum / 2)(bitNum -1)
+      intToBits(intNum / 2, zero, one)(bitNum -1)
     }
   }
   
-  def bitsToInt(bits: Seq[Float]): Int = {
+  def bitsToInt(bits: Seq[Float], gate:Float = 0.0f): Int = {
     val ints = bits.zipWithIndex.map{case(f,i) =>
-      if(f > 0.0f) {
+      if(f > gate) {
         math.pow(2, i).toInt
       }
       else {
@@ -48,5 +40,13 @@ object MathUtil {
       }
     }
     ints.sum
+  }
+  
+  def clamp(min:Float, value:Float, max:Float):Float = {
+    math.max(min, math.min(value, max))
+  }
+  
+  def clamp_0_1(value:Float):Float = {
+    clamp(0f, value, 1f)
   }
 }

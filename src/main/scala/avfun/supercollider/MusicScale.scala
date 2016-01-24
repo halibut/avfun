@@ -33,6 +33,11 @@ object MusicScale {
   val A = 9
   val A_# = 10
   val B = 11
+  
+  def midiToFreq(midiIndex:Int):Float = {
+    val exp = (midiIndex - 69).toDouble / 12
+    math.pow(2, exp).toFloat * 440f
+  }
 }
 
 abstract class AbstractScale(octave:Int, note:Int, indexOffsets:Seq[Int]) extends MusicScale {

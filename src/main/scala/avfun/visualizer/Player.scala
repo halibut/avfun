@@ -22,7 +22,7 @@ abstract class Player extends AudioFrameProducer {
   
   val framerate:Int = 25
   val millisPerFrame = 1000 / framerate
-  val samplesPerSecond = 44100
+  val samplesPerSecond = 48000
   
   val minSamplesPerFrame = samplesPerSecond / framerate 
   

@@ -1,0 +1,308 @@
+package avfun.supercollider
+
+import avfun.nnviz.ga.Organism
+import avfun.nnviz.ga.Organism
+import avfun.supercollider.SongStructureOrganism.SongStructureOrganismDef
+import avfun.nnviz.nn.FastNetwork
+import avfun.supercollider.InstrumentPatternOrganism.InstrumentPatternOrganismDef
+import avfun.supercollider.PatternStructureOrganism.PatternStructureOrganismDef
+import avfun.nnviz.ga.Organism
+import scala.annotation.tailrec
+import avfun.supercollider.model.NoteEvent
+import avfun.supercollider.model.NoteEvent
+import avfun.supercollider.model.SongDef
+import avfun.supercollider.model.PatternDef
+import avfun.supercollider.integ.SCSoundRecorder
+import avfun.supercollider.integ.SCClient
+import avfun.supercollider.integ.SCClient
+import java.io.File
+import avfun.supercollider.SynthOrganism.SynthOrganismDef
+import avfun.supercollider.model.NoteEvent
+
+object SongGenerator3 extends App {
+  
+  def randSongPart():PatternType = {
+    val rndInd = (math.random * 500).toInt % 5
+    
+    val songPart = rndInd match {
+        case 0 => Intro()
+        case 1 => Outro()
+        case 2 => Melody()
+        case 3 => Chorus()
+        case 4 => Break()
+      }
+    
+    songPart
+  }
+
+  val interestingPatternStructureOrganisms = FastOrganismTrainer.train(PatternStructureOrganismDef, 30, 25){ o =>
+    val notes = (0 until 20).map{ i =>
+      val songPart = randSongPart();
+      val pInput = PatternInput(songPart, (math.random * 16).toInt, (math.random * 16).toInt, (math.random * 16).toInt)
+      
+      val ps = PatternStructureOrganism.getPatternStructure(o, pInput)
+      (ps.noteDiv, ps.noteOffsetRange)
+    }
+    
+    notes.sliding(2).map(s => math.abs(s(1)._1 - s(0)._1) + math.abs(s(1)._2 - s(0)._2)).sum
+  }
+  
+  val interestingPatternOrganisms = FastOrganismTrainer.train(InstrumentPatternOrganismDef, 30, 80){ o =>
+    
+    val notes = (0 until 20).map{ i =>
+      val songPart = randSongPart();
+      
+      val pInput = PatternInput(songPart, (math.random * 16).toInt, (math.random * 16).toInt, (math.random * 16).toInt)
+      val structure = PatternStructureOrganism.getPatternStructure(genPatternStructureOrganism, pInput).copy(noteOffsetRange = 16)
+      
+      val pattern = InstrumentPatternOrganism.getPattern(o, structure, pInput)
+      
+      val numNotesOn = pattern.notes.filter(_.isDefined).size
+      
+      val notesOn = numNotesOn.toFloat / pattern.notes.size.toFloat
+      
+      val sliding4NoteDiff = 
+        pattern.notes.filter(_.isDefined).map(_.get._2).sliding(4).map{x => x.distinct.size.toFloat }.sum / 4f
+        
+      val arpDiff = 
+        pattern.notes.filter(_.isDefined).map(_.get._2).sliding(2).map{x =>
+          if(x.size == 2) {
+            val diff = math.abs(x(1) - x(0))
+            if(diff == 1 || diff == 2) {
+              1f
+            }
+            else if(diff == 3 || diff == 4) {
+              0.5f
+            }
+            else if(diff != 0) {
+              0.25f
+            }
+            else {
+              0f
+            }
+          }
+          else {
+            0f
+          }
+        }.sum
+      
+      
+      (sliding4NoteDiff + arpDiff) / pattern.notes.size.toFloat
+    }
+    
+    notes.sum
+  }
+  
+  def genSongStructureOrganism():Organism[SongStructureOrganismDef.type] = {
+    var org = SongStructureOrganismDef.randomize;
+    val orgs = for(i <- 0 until 30) yield {
+      org = SongStructureOrganismDef.mate(org, SongStructureOrganismDef.randomize);
+    }
+    org
+  }
+  
+  def genPatternStructureOrganism():Organism[PatternStructureOrganismDef.type] = {
+    interestingPatternStructureOrganisms(math.floor(math.random * interestingPatternStructureOrganisms.size / 2).toInt)
+  }
+  
+  def genPatternOrganism():Organism[InstrumentPatternOrganismDef.type] = {
+    val size = interestingPatternOrganisms.size / 2
+    interestingPatternOrganisms(math.floor(math.random * size).toInt)
+  }
+  
+  def genPattern(
+    instrumentInd: Int, bars:Int, repeat:Int, 
+    patternType: PatternType, scale: MusicScale, rootNote:Int, songNoteDiv:Int,
+    patternNet:FastNetwork,
+    patternStructureOrg:Organism[PatternStructureOrganismDef.type]) : PatternDef = {
+    
+    val length = (bars*repeat).toFloat
+    var noteTime = 0f
+    
+    //Create a pattern for each bar and then append them together
+    val barPatterns = for(b <- 0 until bars) yield {
+      val patternInput = PatternInput(patternType, b+1, instrumentInd, songNoteDiv)
+      val patternStructure = PatternStructureOrganism.getPatternStructure(patternStructureOrg, patternInput);
+      val pattern = InstrumentPatternOrganism.getPatternFromNet(patternNet, patternStructure, patternInput)
+      val lenMult = patternStructure.noteLength
+      
+      val notePattern = pattern.notes.zipWithIndex.filter(_._1.isDefined).map(o=>(o._1.get, o._2)).map{ case ((len,midiNote),ind) =>
+        val realLen = len * lenMult;
+        val freq = MusicScale.midiToFreq(scale.getOffset(rootNote, midiNote))
+        NoteEvent(noteTime + ind * lenMult, freq, realLen, 0f) 
+      }
+      
+      noteTime += 1f
+      
+      notePattern
+    }
+    
+    val patternLength = bars.toFloat
+    
+    val repeated = for(r <- 0 until repeat; p <- barPatterns) yield (p, r)
+    
+    val timeCorrectedRepeated = repeated.map(p => p._1.map(n => n.copy(time = n.time + (p._2*patternLength)))).flatten
+    
+    val uncondensed = timeCorrectedRepeated
+    
+    if(!uncondensed.isEmpty) {
+      //Combine \\rests if they are next to each other
+      //Remove useless rests and notes (that have duration of 0.0
+      var condensed = Seq[NoteEvent](uncondensed.head)
+      for(ne <- uncondensed.tail) {
+        val last = condensed.last
+        if(last.freq == ne.freq) {
+          val noteStartDiff = last.time - ne.time
+          val prevNoteLenDiff = noteStartDiff - last.dur
+          if(-0.0001f < prevNoteLenDiff && prevNoteLenDiff <= 0.0001f) {
+            condensed = condensed.dropRight(1) :+ last.copy(dur = last.dur + noteStartDiff)
+          }
+          else {
+            condensed :+= ne
+          }
+        }
+        else {
+          condensed :+= ne
+        }
+      }
+    
+      PatternDef(condensed, (bars*repeat).toFloat)
+    }
+    else {
+      PatternDef(uncondensed, (bars*repeat).toFloat)
+    }
+  }
+  
+  def getInstrumentMelody(insInd:Int, instrumentPattern:FastNetwork,
+      scale:MusicScale, rootNote:Int, patternOrg:Organism[PatternStructureOrganismDef.type],
+      songStructure:SongStructure):PatternDef = {
+    val ins = instrumentPattern
+    val noteDiv = songStructure.noteDiv
+    
+    val intro = genPattern(insInd, 4, 2, Intro(), scale, rootNote, noteDiv, ins, patternOrg)
+    val melody1 = genPattern(insInd, 8, 2, Melody(), scale, rootNote, noteDiv, ins, patternOrg)
+    val chorus1 = genPattern(insInd, 8, 2, Chorus(), scale, rootNote, noteDiv, ins, patternOrg)
+    val melody2 = melody1
+    val break = genPattern(insInd, 16, 1, Break(), scale, rootNote, noteDiv, ins, patternOrg)
+    val chorus2 = chorus1
+    val outro = genPattern(insInd, 4, 2, Outro(), scale, rootNote, noteDiv, ins, patternOrg)
+    
+    
+    val fullSongForIns = Seq(intro, melody1, chorus1, melody2, break, chorus2, outro)
+      .reduceLeft((p,x) => p append x)
+    
+    fullSongForIns
+  }
+  
+  @tailrec
+  def getInterestingSongStructure():(Organism[SongStructureOrganismDef.type],SongStructure) = {
+    var songOrg = genSongStructureOrganism()
+    var songStructure = SongStructureOrganism.getSongStructure(songOrg)
+    
+    val parts = Seq(songStructure.hasBreak, songStructure.hasChorus, songStructure.hasIntro, songStructure.hasOutro)
+      .filter(_ == true).size
+    
+    if(parts >= 4 && Seq(2, 3, 4, 5).exists(_ == songStructure.noteDiv) 
+        && songStructure.instruments >= 3 && songStructure.instruments <= 8) {
+      (songOrg, songStructure)
+    }
+    else {
+      getInterestingSongStructure()
+    }
+  }
+  
+  def genSong(name:String)(implicit c:SCClient):SongDef = {
+    val (songOrg, songStructure) = getInterestingSongStructure()
+    
+    val synths = math.min(songStructure.instruments, 5)
+    
+    val instrumentPatterns = for(i <- 0 until math.min(12, songStructure.instruments)) yield {
+      InstrumentPatternOrganismDef.expressPhenotype(genPatternOrganism())
+    }
+    
+    val patternOrg = genPatternStructureOrganism()
+    
+    val scale = new MajorScale(4, MusicScale.A + (math.random * 12).toInt)
+    val rootNote = scale.originNote
+    
+    val numInstruments = instrumentPatterns.size
+    //val numInstruments = 2
+    
+    println("(");
+    println("var "+(1 to synths).map("s_"+_).mkString(", ")+";")
+    println("var score;");
+    println();
+    
+    val songSynthPatterns = (0 until synths).map{ synthInd => 
+      val synthName = "inst"+(synthInd+1)
+      val synthVarName = "s_"+(synthInd+1)
+      
+      val (synthOrg, synthDef) = SCSynthWriter.getGoodSynthFromSavedDefs() 
+      SCSynthWriter.saveSynthDef("n-"+(synthInd+1), synthOrg)
+      println(synthVarName+" = "+SCSynthWriter.writeSynthDef(synthDef, synthName, true)+";\n")
+      println(synthVarName+".add;")
+      println(synthVarName+".writeDefFile;\n\n")
+      
+      val instPatterns = for{
+        insInd <- 0 until numInstruments;
+        if (insInd % synths) == synthInd
+      } yield {
+        getInstrumentMelody(insInd, instrumentPatterns(insInd), scale, rootNote, patternOrg, songStructure)
+      }
+      
+      (synthName, synthDef, instPatterns)
+    }
+    
+    
+    
+    var songDef = SongDef(songStructure.bpm, songStructure.noteDiv, songSynthPatterns)
+  
+//    println("//"+songStructure)
+//        
+//    println("score = "+SCScoreWriter.writeScore(songDef)+";");
+//    
+//    println();
+//    println(s"//Instruments: ${numInstruments},  Synths: ${synths}")
+//    println(s"TempoClock.default.tempo = ${songDef.tempo};")
+//    println("Score.play(score);")
+//    println(")");
+    
+    val dense = songDef.notes.map(_._3.map(p => p.notes.size / p.length).max).max / songDef.noteLengthMult
+    if(dense > 8f) {
+      songDef = songDef.copy(bpm = songDef.bpm / 2)
+    }
+    
+    SCSoundRecorder.recordSong(songDef, name, new File("/tmp/"))
+    
+    songDef
+  }
+  
+  for(i <- 0 until 100) {
+    val synthDefOrg = SynthOrganismDef.randomize
+    SCSynthWriter.saveSynthDef("synth-"+i, synthDefOrg)
+  }
+  
+  for(i <- 0 until 100) {
+    val (synthDefOrg, synthDef) = SCSynthWriter.getGoodSynthFromSavedDefs()
+    SCSynthWriter.saveSynthDef("synth-"+i, synthDefOrg)
+  }
+  
+
+  val scDir = new File("C:/Program Files (x86)/SuperCollider-3.6.6/")
+  val scClient = new SCClient(scDir)
+  
+  scClient.start(System.out)
+  scClient.waitForBoot();
+  val notes = for(i <- 0 until 20) yield {
+    val songName = "s"+(if(i<10) "0" else "") + i
+    val songDef = genSong(songName)(scClient)
+    
+    (songName, songDef.notes.map(_._3.map(p => p.notes.size / p.length).max).max, songDef.noteLengthMult)
+  }
+  scClient.quit()
+  
+  notes.foreach{ case (name, density, mult) =>
+    println(s"$name => $density note density with time adj: $mult = density: ${density / mult}")
+  }
+
+}

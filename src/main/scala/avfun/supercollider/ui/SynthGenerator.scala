@@ -32,15 +32,18 @@ import avfun.visualizer.VideoFrameData
 import avfun.visualizer.VideoFrameListener
 import scala.swing.GridPanel
 import avfun.visualizer.AudioFrameProducer
+import avfun.cfg.ConfigUtil
 
-object SwingPlayer extends SimpleSwingApplication {  
+object SynthGenerator extends SimpleSwingApplication {  
   
-  val songs = List(
-//      "440and12ksine.wav",
-//      "electric hymn.wav",
-//      "cosmic journey.wav"
-      "milk-garbage.wav"
-      )
+  val appConfig = ConfigUtil.load()
+  
+  val drumsLoc = "sc-orgs/synthdef/drums"
+  val synthtsLoc = "sc-orgs/synthdef/synths"
+  
+  
+  
+  
   var curSong = -1
   
   val player = new Player(){
@@ -95,14 +98,7 @@ object SwingPlayer extends SimpleSwingApplication {
   }
   
   def nextSong = {
-    if(curSong < 0 || curSong >= songs.size - 1) 
-      curSong = 0 
-    else
-      curSong += 1
-      
-    val songFileName = songs(curSong)
-    val file = new File(songFileName)
-    player.changeAudioSource(new AudioInputStreamAudioStream(AudioSystem.getAudioInputStream(file)))
+    
   }
  
   def newOrganism:Organism[SymmetricVisualizerNetworkDef.type] = {
@@ -138,4 +134,27 @@ object SwingPlayer extends SimpleSwingApplication {
     newChild
   }
   
+}
+
+class VizPanel(val cWidth:Int, val cHeight:Int, val audioFrameProducer:AudioFrameProducer){
+  
+  val panel:VideoFrameListenerPanel = new VideoFrameListenerPanel(cWidth, cHeight)
+  lazy val canvas:SwingCanvas2D = new SwingCanvas2D(cWidth, cHeight)
+  private var _viz:Option[MusicVisualizer] = None
+  
+  def changeVisualizer(viz:MusicVisualizer):Unit = {
+    _viz.foreach{ v => audioFrameProducer.removeAudioFrameListener(v) }
+    
+    if(viz != null){
+      viz.setCanvas(canvas)
+      viz.frameListener_+=(panel)
+      
+      val aViz = new AsyncMusicVisualizer(viz)
+      _viz = Some(aViz)
+      audioFrameProducer.addAudioFrameListener(aViz)
+    }
+    else{
+      _viz = None
+    }
+  }
 }
