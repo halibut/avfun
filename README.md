@@ -10,20 +10,20 @@ The project can be broken down into a few high-level areas.
 * __vizualization/playback__ - UI/automation around listening to the songs and visual feedback.
 
 
-##Setup
+## Setup
 
 1. Clone the repo.
 2. Install Supercollider.
 3. Make a copy of the `song-generator-config.json.example` file in the project root. Name the new file `song-generator-config.json`. Modify the file to point to your supercollider installation location. You can also modify the location where the generated songs (and machine learning data) will be stored.
 
-##Make Some Music
+## Make Some Music
 
 Eventually this will all be combined into a single UI. But for now it's 2 separate steps. Generate songs by running the `avfun.musicgen.SongGenerator` class. Listen to the songs by running the `avfun.musicgen.MusigGenUI` class.
 
 
-##Future Plans
+## Future Plans
 
-###Composition Changes
+### Composition Changes
 
 I'm not entirely happy with how the app generates compositions. It's a genetic algorithm-based neural network, or set of neural networks. Each network is responsible for generating a part of the overall song. 
 * Song structure stuff like BPM, # of instruments, key, etc.
@@ -36,10 +36,10 @@ All of this works okay to produce some esoteric music. But since training is bas
 Long story short, I'm looking into different ways of generating the compositions.
 
 
-###Visualization
+### Visualization
 
 I've played around with this some, but I'd like for part of the machine learning algorithm produce a music visualizer.
 
-###Crowd-sourced feedback
+### Crowd-sourced feedback
 
 As I pointed out a couple sections prior to this one, training the algorithm to produce "good" music is a daunting task for 1 person. It would be neat to crowd source the training feedback. But obviously this requires additional infrastructure and plumbing to automate the training process. Idea: Create a "generation" of songs and upload to youtube. Use youtube's likes/dislikes as fitness values when generating the next generation. (Youtube because of unlimited videos, easily shareable, API to aid in automation of the process. Not necessarily married to youtube though.)
