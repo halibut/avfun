@@ -12,13 +12,15 @@ object SongStructureOrganism {
   val songParts = Seq("hasIntro", "hasOutro", "hasChorus", "hasBreak")
   val instrumentBits = Seq("instruments_b1", "instruments_b2", "instruments_b3", "instruments_b4")
   val noteDivBits = Seq("noteDiv_b1", "noteDiv_b2", "noteDiv_b3", "noteDiv_b4")
+  val scaleBits = Seq("scale_b1", "scale_b2", "scale_b3", "scale_b3")
   
-  val outputNames = songParts ++ instrumentBits ++ noteDivBits ++ Seq("beatsPerMinute") 
+  val outputNames = songParts ++ instrumentBits ++ noteDivBits ++ scaleBits ++ Seq("beatsPerMinute") 
         
   val songPartsInd = 0
   val instrumentBitsInd = songPartsInd + songParts.size
   val noteDivBitsInd = instrumentBitsInd + instrumentBits.size
-  val bpmInd = noteDivBitsInd + noteDivBits.size
+  val scaleBitsInd = noteDivBitsInd + noteDivBits.size
+  val bpmInd = scaleBitsInd + scaleBits.size
   
   val MaxBPM = 180f
   val MinBPM = 60f
@@ -57,7 +59,9 @@ object SongStructureOrganism {
     
     val noteDiv = 1 + MathUtil.bitsToInt(genes.slice(noteDivBitsInd, noteDivBitsInd + noteDivBits.size))
     
-    SongStructure(hasIntro, hasOutro, hasChorus, hasBreak, bpm, instruments, noteDiv)
+    val scale = MathUtil.bitsToInt(genes.slice(scaleBitsInd, scaleBitsInd + scaleBits.size)) % 12
+    
+    SongStructure(hasIntro, hasOutro, hasChorus, hasBreak, bpm, instruments, noteDiv, scale)
   }
 }
 

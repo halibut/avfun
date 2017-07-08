@@ -39,8 +39,15 @@ object SwingPlayer extends SimpleSwingApplication {
 //      "440and12ksine.wav",
 //      "electric hymn.wav",
 //      "cosmic journey.wav"
-      "milk-garbage.wav"
-      )
+//      "C:/tmp/song-gen/songs/gen-5-song-1.wav",
+//      "C:/tmp/song-gen/songs/gen-5-song-2.wav",
+//      "C:/tmp/song-gen/songs/gen-5-song-3.wav",
+//      "C:/tmp/song-gen/songs/gen-5-song-4.wav",
+//      "C:/tmp/song-gen/songs/gen-5-song-5.wav"
+       "20", "30", "40", "50", "60", "100", "200", "500", "1000",
+       "2000", "5000", "8000", "10000", "12000", "15000"
+      ).map("C:/tmp/test-tones/"+_+"hz.wav")
+      
   var curSong = -1
   
   val player = new Player(){
@@ -82,7 +89,7 @@ object SwingPlayer extends SimpleSwingApplication {
     nextSong
     
     //Initialize panels
-    specPanel.changeVisualizer(new FFTVisualizer())
+    specPanel.changeVisualizer(new FFTVisualizer(512,40))
     p1Panel.changeVisualizer(new SymmetricVisualizer(p1Org))
     p2Panel.changeVisualizer(new SymmetricVisualizer(p2Org))
     cPanel.changeVisualizer(new SymmetricVisualizer(cOrg))

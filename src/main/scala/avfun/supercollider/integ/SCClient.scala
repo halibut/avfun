@@ -26,6 +26,10 @@ class SCClient(val scLangDir:File, val tmpDir:File = new File("/tmp/")) {
   def start(out:PrintStream, args:String*):Unit = {
     quit()
     
+    if(!tmpDir.exists()) {
+      tmpDir.mkdirs()
+    }
+    
     val sclangExe = new File(scLangDir, "sclang.exe").getAbsolutePath 
     val workingDir = scLangDir.getAbsolutePath
     

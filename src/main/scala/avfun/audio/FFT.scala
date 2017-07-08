@@ -61,19 +61,27 @@ object FFT{
    * The resulting array is useful for visualizations or as input into other frequency
    * analysis tools.
    */
-  def getSpectrumForAudio(freqDomainData:Array[Float], fft:FFT):Array[Float] = {
+  def getSpectrumForAudio(freqDomainData:Array[Float], fft:FFT, minDecibel:Int = -60, maxDecibel:Int = -8):Array[Float] = {
     val outputSamples = fft.sampleSize / 2
-    val outputSamplesDiv = 1f / outputSamples.toFloat
+    val outputSamplesDiv = 1f / fft.sampleSize.toFloat
     val output = new Array[Float](outputSamples)
+    
+    val dbRange = -minDecibel
     
     var i = 0
     while(i < outputSamples){
       val real = freqDomainData(i * 2)
       val im = freqDomainData(i * 2 + 1)
       val amp = real * real + im * im
-      val power = 10 * math.log10(1 + amp)
-      val logScaled = .125f * (4+math.log(power)).toFloat 
-      output(i) = math.min(1f, math.max(0f, logScaled))
+      val power = 2f * math.sqrt(amp).toFloat * outputSamplesDiv
+      
+      val scaledDb = 1f + ((20f * math.log10(power).toFloat - maxDecibel) / dbRange)
+      
+      output(i) = math.min(1f, math.max(0f, scaledDb))
+      
+//      val power = 10 * math.log10(1 + amp)
+//      val logScaled = .125f * (4+math.log(power)).toFloat 
+//      output(i) = math.min(1f, math.max(0f, logScaled))
       i+=1
     }
     

@@ -18,7 +18,7 @@ case class Pattern(notes:Seq[Option[(Float, Int)]])
 
 case class SongStructure(
     hasIntro:Boolean, hasOutro:Boolean, hasChorus:Boolean, hasBreak:Boolean,
-    bpm:Float, instruments:Int, noteDiv:Int)
+    bpm:Float, instruments:Int, noteDiv:Int, scaleOffsetFromA4:Int)
 
 object MathUtil {
   def intToBits(intNum:Int, zero:Float = 0f, one:Float = 1f)(bitNum:Int): Float = {

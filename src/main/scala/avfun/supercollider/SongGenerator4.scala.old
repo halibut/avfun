@@ -27,7 +27,7 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 
-object SongGenerator3 extends App {
+object SongGenerator4 extends App {
   
   def randSongPart():PatternType = {
     val rndInd = (math.random * 500).toInt % 5
@@ -321,4 +321,13 @@ object SongGenerator3 extends App {
 
 }
 
-case class GenInfo(gen:Int)
+case class SG4GenInfo(
+  gen:Int,
+  
+)
+
+case class SG4SongInfo(
+  songFileName:String,
+  organismFileName:String,
+  synthOrganismFileNames:Seq[String]
+)

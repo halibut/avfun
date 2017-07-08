@@ -206,7 +206,7 @@ object SCSynthWriter {
   def getSynthFromSavedDefs():Organism[SynthOrganismDef.type] = {
     //val synthdefsDir = new File("sc-orgs/synthdef")
     
-    val synthFiles = new File("sc-orgs/synthdef/synths").listFiles()
+    val synthFiles = new File("/tmp/sc/orgs/synths").listFiles()
     
     val o1 = if(synthFiles.length == 0) {
       SynthOrganismDef.randomize
@@ -239,9 +239,9 @@ object SCSynthWriter {
     (org,synthDef)
   }
   
-  def saveSynthDef(name:String, org:Organism[SynthOrganismDef.type]):Unit = {
+  def saveSynthDef(name:String, org:Organism[SynthOrganismDef.type], dir:String = "/tmp/sc/orgs/synths"):Unit = {
     val orgSerializer = new OrganismSerializer()
-    val orgFile = new File("sc-orgs/synthdef/synths", name+".org")
+    val orgFile = new File(dir, name+".org")
     if(orgFile.exists()){
       orgFile.delete()
     }

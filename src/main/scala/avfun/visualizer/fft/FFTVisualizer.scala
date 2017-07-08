@@ -5,14 +5,17 @@ import avfun.audio.FFT
 import avfun.audio.HanningWindow
 import avfun.visualizer.AudioFrameData
 import avfun.visualizer.MusicVisualizer
+import scala.collection.mutable.ArrayBuffer
 
-class FFTVisualizer extends MusicVisualizer {
-  val fftInputSamples = 256
+class FFTVisualizer(fftInputSamples:Int, displayBarsPerChannel:Int, barWidth:Int = 3) extends MusicVisualizer {
   val fftOutputSamples = fftInputSamples / 2 
+  
+  val samplesPerDisplayBar = fftOutputSamples.toFloat / displayBarsPerChannel.toFloat
   
   override val requiredSamplesPerFrame: Int = fftInputSamples
   
-  val fft = new FFT(fftInputSamples, new HanningWindow(fftInputSamples)) ;
+  val fftWindow = new HanningWindow(fftInputSamples)
+  val fft = new FFT(fftInputSamples, fftWindow) ;
   
   def drawFrame(frameData: AudioFrameData, canvas: Canvas2D): Unit = {
     //Cause the image to constantly fade to white
@@ -32,44 +35,43 @@ class FFTVisualizer extends MusicVisualizer {
 //    new Array[Float](fftInputSamples)
 //    System.arraycopy(, 0, rightSamples, 0, fftInputSamples)
     val rightSamples = fft.transform(sData.channelData(1))
+    val rightSpec = FFT.getSpectrumForAudio(rightSamples, fft)
     
     val lines = fftInputSamples / 2
 
-    var oldX = 0
-    var oldY = canvas.height
-    var oldLogX = 0
-    var oldLogY = canvas.height
+    val halfWidth = canvas.width / 2
     
-    for(i <- 0 until lines){
-      //val x = i * canvas.width / lines
-      //val y = canvas.height - (leftDec(i) * canvas.height).toInt
+    val accumLeft = ArrayBuffer[Float]()
+    val accumRight = ArrayBuffer[Float]()
+    
+    for{
+      i <- 0 until lines
+    }{
+      accumLeft += leftSpec(i)
+      accumRight += rightSpec(i)
       
-//      canvas.setColor(.8f,0f,0f)
-//      canvas.drawLine(oldX, oldY, x, y)
-//      canvas.fillRect(x, y, 2, 2)
+      if(accumLeft.size >= samplesPerDisplayBar) {
+        val avgLeft = accumLeft.sum / accumLeft.size.toFloat
+        val avgRight = accumRight.sum / accumRight.size.toFloat
+        
+        val xOffset = (canvas.width * (i.toFloat / lines) / 2).toInt
+        val xLeft = halfWidth - xOffset
+        val xRight = halfWidth + xOffset
+  //      val logx = (canvas.width * .25 * (4+math.log(i.toFloat / lines))).toInt
+  //      val logy = canvas.height - (canvas.height.toFloat *.125f * (4+math.log(leftDec(i))).toFloat).toInt
+        val yLeft = canvas.height - (canvas.height * avgLeft).toInt
+        val yRight = canvas.height - (canvas.height * avgRight).toInt
+        
+        canvas.setColor(1f,leftSpec(i),leftSpec(i))
+        canvas.fillRect(xLeft, yLeft, barWidth, canvas.height - yLeft)
+        canvas.setColor(1f,rightSpec(i),rightSpec(i))
+        canvas.fillRect(xRight, yRight, barWidth, canvas.height - yRight)
+        
+        accumLeft.clear()
+        accumRight.clear()
+      }
       
-      val logx = (canvas.width * .25 * (4+math.log(i.toFloat / lines))).toInt
-//      val logy = canvas.height - (canvas.height.toFloat *.125f * (4+math.log(leftDec(i))).toFloat).toInt
-      val logy = canvas.height - (canvas.height * leftSpec(i)).toInt
-      
-      canvas.setColor(1f,.5f,.5f)
-      canvas.drawLine(oldLogX, oldLogY, logx, logy)
-      canvas.setColor(1f,.8f,.8f)
-      canvas.fillRect(logx, logy, 3, canvas.height - logy)
-      
-      //oldX = x
-      //oldY = y
-      oldLogX = logx
-      oldLogY = logy
     }
-    
-//    canvas.setColor(0f,0f,.5f)
-//    for(i <- 0 until lines){
-//      val x = i * canvas.width / lines
-//      val y = canvas.height - (rightSamples(i) * canvas.height).toInt
-//      canvas.fillRect(x, y, 2, 2)
-//    }
-    
     
     canvas.setColor(.5f,.5f,.5f)
     for(i <- 0 until 10){

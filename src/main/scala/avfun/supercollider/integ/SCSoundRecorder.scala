@@ -36,13 +36,15 @@ object SCSoundRecorder {
   
   def recordSong(songDef:SongDef, name:String, outDir:File)(implicit c:SCClient):Unit = {
     
-    val songFile = new File(outDir, name+".wav")
+    val nameWithoutExt = name.takeWhile(_ != '.')
+    
+    val songFile = new File(outDir, nameWithoutExt+".wav")
     
     if(songFile.exists()) {
       songFile.delete()
     }
     
-    val outputOscFile = new File(outDir, name+".osc")
+    val outputOscFile = new File(outDir, nameWithoutExt+".osc")
     
     val songFileStr = songFile.getAbsolutePath.replaceAllLiterally("\\", "\\\\")
     val outputOscFileStr = outputOscFile.getAbsolutePath.replaceAllLiterally("\\", "\\\\")

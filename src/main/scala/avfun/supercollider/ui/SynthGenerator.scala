@@ -1,4 +1,4 @@
-package avfun.visualizer.swing
+package avfun.supercollider.ui
 
 import scala.swing.SimpleSwingApplication
 import scala.swing.Frame
@@ -33,13 +33,16 @@ import avfun.visualizer.VideoFrameListener
 import scala.swing.GridPanel
 import avfun.visualizer.AudioFrameProducer
 import avfun.cfg.ConfigUtil
+import avfun.visualizer.swing.VideoFrameListenerPanel
+import avfun.visualizer.swing.AsyncMusicVisualizer
+import avfun.visualizer.swing.VizPanel
 
 object SynthGenerator extends SimpleSwingApplication {  
   
   val appConfig = ConfigUtil.load()
   
-  val drumsLoc = "sc-orgs/synthdef/drums"
-  val synthtsLoc = "sc-orgs/synthdef/synths"
+  val drumsLoc = "c:/tmp/sc/orgs/drums"
+  val synthtsLoc = "c:/tmp/sc/orgs/synths"
   
   
   
@@ -85,7 +88,7 @@ object SynthGenerator extends SimpleSwingApplication {
     nextSong
     
     //Initialize panels
-    specPanel.changeVisualizer(new FFTVisualizer())
+    specPanel.changeVisualizer(new FFTVisualizer(256, 40))
     p1Panel.changeVisualizer(new SymmetricVisualizer(p1Org))
     p2Panel.changeVisualizer(new SymmetricVisualizer(p2Org))
     cPanel.changeVisualizer(new SymmetricVisualizer(cOrg))
@@ -136,25 +139,3 @@ object SynthGenerator extends SimpleSwingApplication {
   
 }
 
-class VizPanel(val cWidth:Int, val cHeight:Int, val audioFrameProducer:AudioFrameProducer){
-  
-  val panel:VideoFrameListenerPanel = new VideoFrameListenerPanel(cWidth, cHeight)
-  lazy val canvas:SwingCanvas2D = new SwingCanvas2D(cWidth, cHeight)
-  private var _viz:Option[MusicVisualizer] = None
-  
-  def changeVisualizer(viz:MusicVisualizer):Unit = {
-    _viz.foreach{ v => audioFrameProducer.removeAudioFrameListener(v) }
-    
-    if(viz != null){
-      viz.setCanvas(canvas)
-      viz.frameListener_+=(panel)
-      
-      val aViz = new AsyncMusicVisualizer(viz)
-      _viz = Some(aViz)
-      audioFrameProducer.addAudioFrameListener(aViz)
-    }
-    else{
-      _viz = None
-    }
-  }
-}
