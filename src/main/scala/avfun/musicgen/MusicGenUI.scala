@@ -45,8 +45,10 @@ import scala.swing.GridBagPanel
 
 object MusicGenUI extends SimpleSwingApplication {  
   
+  val songGeneratorConfig = SongGeneratorConfig.getConfigFromFile("./song-generator-config.json")
+  
   val songUtil = new SongGeneratorUtil(
-    baseDir = "/tmp/song-gen/", songs = 20, 
+    baseDir = songGeneratorConfig.projectDir, songs = 20, 
     songStructureOrganisms = 20, patternOrganisms = 20, synthOrganisms = 40, instrumentPatternOrganisms = 40  
   )
   
@@ -283,4 +285,6 @@ object MusicGenUI extends SimpleSwingApplication {
     setSong(0)
   }
   
+  
+
 }

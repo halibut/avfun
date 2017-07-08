@@ -10,12 +10,14 @@ import rapture.json.formatters.humanReadable._
 
 object SongGenerator extends App {
   
+  val songGeneratorConfig = SongGeneratorConfig.getConfigFromFile("./song-generator-config.json")
+  
   val songUtil = new SongGeneratorUtil(
-    baseDir = "/tmp/song-gen/", songs = 20, 
+    baseDir = songGeneratorConfig.projectDir, songs = 20, 
     songStructureOrganisms = 20, patternOrganisms = 20, synthOrganisms = 40, instrumentPatternOrganisms = 40  
   )
   
-  val scDir = new File("C:/Program Files/SuperCollider-3.8.0/")
+  val scDir = new File(songGeneratorConfig.superColliderInstallDir)
   val scClient = new SCClient(scDir, new File("/tmp/sc-tmp/"))
   
   try{
