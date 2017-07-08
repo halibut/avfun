@@ -76,7 +76,7 @@ abstract class Player extends AudioFrameProducer {
     sendAudioFrameToListeners(frameData)
     
     val t2 = new Date().getTime();
-    logger.debug(s"Completed frame. Time: ${t2-t1} ms.  Audio samples read: ${frameData.audioData.samples}")
+    //logger.debug(s"Completed frame. Time: ${t2-t1} ms.  Audio samples read: ${frameData.audioData.samples}")
   }
   
   def play = {

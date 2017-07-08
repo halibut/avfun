@@ -98,7 +98,7 @@ object MusicGenUI extends SimpleSwingApplication {
     setSong(0)
     
     //Initialize panels
-    specPanel.changeVisualizer(new FFTVisualizer(1024,50,3))
+    specPanel.changeVisualizer(new FFTVisualizer(1024,50,2))
     
   }
 

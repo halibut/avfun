@@ -89,7 +89,7 @@ object SwingPlayer extends SimpleSwingApplication {
     nextSong
     
     //Initialize panels
-    specPanel.changeVisualizer(new FFTVisualizer(512,40))
+    specPanel.changeVisualizer(new FFTVisualizer(512,100, 2))
     p1Panel.changeVisualizer(new SymmetricVisualizer(p1Org))
     p2Panel.changeVisualizer(new SymmetricVisualizer(p2Org))
     cPanel.changeVisualizer(new SymmetricVisualizer(cOrg))
