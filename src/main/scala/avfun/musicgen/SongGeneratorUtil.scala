@@ -30,6 +30,7 @@ import avfun.supercollider.model.NoteEvent
 import avfun.supercollider.integ.SCClient
 import avfun.supercollider.integ.SCSoundRecorder
 import avfun.supercollider._
+import avfun.supercollider.model.SynthDef
 
 class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, patternOrganisms:Int, synthOrganisms:Int, instrumentPatternOrganisms:Int) {
   
@@ -352,7 +353,7 @@ class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, p
     
     val numInstruments = instrumentPatterns.size
     
-    val songSynthPatterns = (0 until synthOrgs.size).map{ synthInd => 
+    val songSynthPatternsInput = (0 until synthOrgs.size).map{ synthInd => 
       val (synthFileName, synthOrg) = synthOrgs(synthInd)
       
       val cleanSynthFileName = synthFileName.takeWhile(_ != '.').replaceAll("[-_ ]", "")      
@@ -360,22 +361,10 @@ class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, p
       
       val synthDef = SynthOrganism.getSynthDefinition(synthOrg)
       
-      val instPatterns = for{
-        insInd <- 0 until numInstruments;
-        if (insInd % synths) == synthInd
-      } yield {
-        getInstrumentMelody(insInd, instrumentPatterns(insInd)._2, scale, rootNote, patternOrg, songStructure)
-      }
-      
-      (synthName, synthDef, instPatterns)
+      (synthInd, synthName, synthDef)
     }
     
-    var songDef = SongDef(songStructure.bpm, songStructure.noteDiv, songSynthPatterns)
-    
-    val dense = songDef.notes.map(_._3.map(p => p.notes.size / p.length).max).max / songDef.noteLengthMult
-    if(dense > 8f) {
-      songDef = songDef.copy(bpm = songDef.bpm / 2)
-    }
+    val songDef = createSongDef(songStructure, patternOrg, instrumentPatterns, songSynthPatternsInput)
     
     val genSongInfo = GenSongInfo(
       songFile = name,
@@ -392,6 +381,64 @@ class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, p
     )
     
     (songDef, genSongInfo)
+  }
+  
+  private def createSongDef(songStructure:SongStructure, patternOrg:Organism[PatternStructureOrganismDef.type], instrumentPatterns:Seq[(String,FastNetwork)], songSynthPatternsInput:Seq[(Int, String, SynthDef)]):SongDef = {
+    val scale = new MajorScale(4, MusicScale.A + songStructure.scaleOffsetFromA4)
+    val rootNote = scale.originNote
+    
+    val numInstruments = songStructure.instruments
+    
+    val synths = Math.min(4, songStructure.instruments)
+    
+    val songSynthPatterns = songSynthPatternsInput.map{ case(synthInd, synthName, synthDef) => 
+      val instPatterns = for{
+        insInd <- 0 until numInstruments;
+        if (insInd % synths) == synthInd
+      } yield {
+        getInstrumentMelody(insInd, instrumentPatterns(insInd)._2, scale, rootNote, patternOrg, songStructure)
+      }
+      
+      (synthName, synthDef, instPatterns)
+    }
+    
+    var songDef = SongDef(songStructure.bpm, songStructure.noteDiv, songSynthPatterns)
+    
+    val dense = songDef.notes.map(_._3.map(p => p.notes.size / p.length).max).max / songDef.noteLengthMult
+    if(dense > 8f) {
+      songDef = songDef.copy(bpm = songDef.bpm / 2)
+    }
+    songDef
+  }
+  
+  def getSongDef(genSongInfo:GenSongInfo):SongDef = {
+    val songStructOrg = loadOrganismFromFile(songStructsPath, genSongInfo.songStructureOrg, SongStructureOrganismDef)
+    val songStructure = SongStructureOrganism.getSongStructure(songStructOrg)
+    
+    val patternOrg = loadOrganismFromFile(patternStructsPath, genSongInfo.patternStructureOrg, PatternStructureOrganismDef)
+    
+    val synthOrgs = genSongInfo.synthOrgs.map{ s =>
+      (s, loadOrganismFromFile(synthDefsPath, s, SynthOrganismDef))
+    }
+    
+    val instrumentPatterns = genSongInfo.instrumentPatternOrgs.map{ p =>
+      val org = loadOrganismFromFile(instrumentPattensPath, p, InstrumentPatternOrganismDef)
+      (p, InstrumentPatternOrganismDef.expressPhenotype(org))
+    }
+    
+    val songSynthPatternsInput = (0 until synthOrgs.size).map{ synthInd => 
+      val (synthFileName, synthOrg) = synthOrgs(synthInd)
+      
+      val cleanSynthFileName = synthFileName.takeWhile(_ != '.').replaceAll("[-_ ]", "")      
+      val synthName = "inst"+cleanSynthFileName
+      
+      val synthDef = SynthOrganism.getSynthDefinition(synthOrg)
+      
+      (synthInd, synthName, synthDef)
+    }
+    
+    createSongDef(songStructure, patternOrg, instrumentPatterns, songSynthPatternsInput)
+    
   }
   
   
@@ -608,7 +655,7 @@ class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, p
     }
   }
   
-  private def writeGenSongInfo(file:String, genSongs:GenSongs):Unit = {
+  def writeGenSongInfo(file:String, genSongs:GenSongs):Unit = {
     val genSongInfoFile = basePath.resolve(file)
     
     val genSongInfoFileJson = Json(genSongs)
@@ -618,6 +665,24 @@ class SongGeneratorUtil(baseDir:String, songs:Int, songStructureOrganisms:Int, p
   
   def getCurrentGenSongs():GenSongs = {
     getGenSongInfo(genInfoFile)
+  }
+  
+  def saveCurrentGenSongs(genSongs:GenSongs):Unit = {
+    val genFile = basePath.resolve(genInfoFile)
+    val tmpFile = basePath.resolve(genInfoFile+".bak")
+    Files.copy(genFile, tmpFile)
+    
+    try{
+      writeGenSongInfo(genInfoFile, genSongs)
+    }
+    catch{
+      case t:Throwable => {
+        Files.copy(tmpFile, genFile)
+      }
+    }
+    finally{
+      Files.deleteIfExists(tmpFile)
+    }
   }
   
   def getFullSongPath(songInfo:GenSongInfo):Path = {

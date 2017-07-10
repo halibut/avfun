@@ -5,6 +5,7 @@ sealed trait EnvelopeType {
   def hasSustain:Boolean
   def minTime:Float
   val typeInd:Int
+  def prettyPrint():String
 }
 case class EnvelopeADSR(attackTime:Float, decayTime:Float, sustainLevel:Float, releaseTime:Float) extends EnvelopeType {
   def this(vars:UGenVars) = this(
@@ -22,6 +23,10 @@ case class EnvelopeADSR(attackTime:Float, decayTime:Float, sustainLevel:Float, r
     .update(1, (releaseTime - 0.01f) / 2f)
 
   override val minTime:Float = attackTime + releaseTime + decayTime
+  
+  def prettyPrint():String = {
+    s"ADSR(attack = ${attackTime}, decay = ${decayTime}, sustainLevel = ${sustainLevel}, release = ${releaseTime})"
+  }
 }
 case class EnvelopePerc(val attackTime:Float, val releaseTime:Float) extends EnvelopeType {
   def this(vars:UGenVars) = this(
@@ -29,13 +34,17 @@ case class EnvelopePerc(val attackTime:Float, val releaseTime:Float) extends Env
       0.01f + 2f * vars(1)
     )
   override val hasSustain = false
-  override val typeInd = 0
+  override val typeInd = 1
   
   override val uGenVals = UGenVars()
     .update(0, (attackTime-0.001f) / 0.25f)
     .update(1, (releaseTime - 0.01f) / 2f)
   
   override def minTime = attackTime + releaseTime
+  
+  def prettyPrint():String = {
+    s"Percussion(attack = ${attackTime}, release = ${releaseTime})"
+  }
 }
 
 case object InvalidEnvelope extends EnvelopeType {
@@ -43,6 +52,10 @@ case object InvalidEnvelope extends EnvelopeType {
   override def hasSustain:Boolean = false
   override def minTime:Float = 0f
   override val typeInd:Int = -1
+  
+  def prettyPrint():String = {
+    s"Invalid"
+  }
 }
 
 

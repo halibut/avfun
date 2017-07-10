@@ -22,7 +22,7 @@ abstract class Player extends AudioFrameProducer {
   
   val framerate:Int = 25
   val millisPerFrame = 1000 / framerate
-  val samplesPerSecond = 48000
+  val samplesPerSecond = 44100
   
   val minSamplesPerFrame = samplesPerSecond / framerate 
   
@@ -50,26 +50,27 @@ abstract class Player extends AudioFrameProducer {
     //Read some data into the buffer
     _bufferedAS.read(minSamplesPerFrame)
     
-    val frameSamples:Option[IndexedSeq[Array[Float]]] = _bufferedAS.getBufferedSamples(numSamples).map{data =>
+    val frameSamples:Option[(IndexedSeq[Array[Float]], Option[Float])] = _bufferedAS.getBufferedSamples(numSamples).map{data =>
       if(data.samples < numSamples){
-        (0 until _as.channels) map { ch =>
+        val channelData = (0 until _as.channels) map { ch =>
           val arr = new Array[Float](numSamples)
           System.arraycopy(data.channelData(ch), 0, arr, 0, data.samples)
           arr
         }
+        (channelData, data.streamPosition)
       }
       else{
-        data.channelData
+        (data.channelData, data.streamPosition)
       }
     }
     
     val frameData = frameSamples match {
-      case Some(sd:IndexedSeq[Array[Float]]) => {
-        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, sd), false) 
+      case Some((sd:IndexedSeq[Array[Float]], streamPosition:Option[Float])) => {
+        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, sd, streamPosition), false, streamPosition) 
       }
       case None =>{
         val data = (0 until _as.channels) map { ch => new Array[Float](numSamples) }
-        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, data), true)
+        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, data, None), true, None)
       }
     }
     
@@ -85,6 +86,14 @@ abstract class Player extends AudioFrameProducer {
   
   def pause = {
     _timer.pause
+  }
+  
+  def isPaused:Boolean = {
+    _timer.isPaused
+  }
+  
+  def isPlaying:Boolean = {
+    _timer.isStarted
   }
   
   def changeAudioSource(streamSource:AudioStream):Unit = {

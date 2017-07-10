@@ -38,6 +38,41 @@ object MusicScale {
     val exp = (midiIndex - 69).toDouble / 12
     math.pow(2, exp).toFloat * 440f
   }
+  
+  def freqToMidi(frequency:Float):Int = {
+    val rounded = (math.log(frequency/440f)/math.log(2) * 12 + 69).round.toInt
+    math.min(127, math.max(0, rounded))
+  }
+  
+  trait OctaveIndicatorType
+  object OctaveStartIndicator extends OctaveIndicatorType
+  object OctaveAllNotesIndicator extends OctaveIndicatorType
+  object OctaveNoIndicator extends OctaveIndicatorType
+  
+  def getMidiNoteStr(midiNote:Int, octaveIndicator:OctaveIndicatorType):String = {
+    val octave = midiNote / 12
+    val note = midiNote % 12 match {
+      case 0 => "C" + (if(octaveIndicator == OctaveStartIndicator) "["+octave.toString+"]" else "")  
+      case 1 => "C#"
+      case 2 => "D"
+      case 3 => "D#"
+      case 4 => "E"
+      case 5 => "F"
+      case 6 => "F#"
+      case 7 => "G"
+      case 8 => "G#"
+      case 9 => "A"
+      case 10 => "A#"
+      case 11 => "B"
+    }
+    
+    if(octaveIndicator == OctaveAllNotesIndicator) {
+      note+"_"+octave
+    }
+    else {
+      note
+    }
+  }
 }
 
 abstract class AbstractScale(octave:Int, note:Int, indexOffsets:Seq[Int]) extends MusicScale {

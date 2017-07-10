@@ -42,6 +42,13 @@ import scala.swing.Swing
 import scala.swing.event.AdjustingEvent
 import scala.swing.Component
 import scala.swing.GridBagPanel
+import avfun.visualizer.AudioFrameListener
+import avfun.visualizer.AudioFrameListener
+import avfun.visualizer.AudioFrameData
+import java.awt.Graphics
+import java.awt.Font
+import avfun.visualizer.info.SongProgressBar
+import avfun.visualizer.info.SongNotesPlayerVisualizer
 
 object MusicGenUI extends SimpleSwingApplication {  
   
@@ -51,17 +58,24 @@ object MusicGenUI extends SimpleSwingApplication {
     baseDir = songGeneratorConfig.projectDir, songs = 20, 
     songStructureOrganisms = 20, patternOrganisms = 20, synthOrganisms = 40, instrumentPatternOrganisms = 40  
   )
-  
-  var songs = Seq[GenSongInfo]()
+
+  var songs:GenSongs = null
   var curSong = -1
+  
+  val songPositionPanel = new SongProgressBar()
+  songPositionPanel.onSongProgress{ p => if(p > 1.0f) this.nextSong() }
+  
+  val songNotesPanel = new SongNotesPlayerVisualizer()
   
   val player = new Player(){
     override def timer = new ThreadBasedTimer
   }
   player.addAudioFrameListener(new OutputDeviceAudioFrameListener(new TargetLineAudioOutputDevice()))
+  player.addAudioFrameListener(songPositionPanel)
+  player.addAudioFrameListener(songNotesPanel)
   
-  val cWidth = 400
-  val cHeight = 300
+  val cWidth = 600
+  val cHeight = 200
   
   val specPanel = new VizPanel(cWidth, cHeight, player)
   
@@ -72,15 +86,27 @@ object MusicGenUI extends SimpleSwingApplication {
   
   lazy val ui = new SplitPane(Orientation.Vertical){
     this.leftComponent = new SplitPane(Orientation.Horizontal){ 
-      this.topComponent = new BoxPanel(Orientation.Vertical){
-        this.contents += new Button("Play"){ 
-          reactions += { case c:ButtonClicked => player.play }
-          maximumSize = new Dimension(800, 20)
-        }
-        this.contents += new Button("Pause"){ 
-          reactions += { case c:ButtonClicked => player.pause }
-          maximumSize = new Dimension(800, 20)
-        }
+      this.topComponent = new GridBagPanel(){
+        minimumSize = new Dimension(100,40)
+        preferredSize = new Dimension(120,40)
+        maximumSize = new Dimension(2000,80)
+        
+        this.add(new Button("Play"){ 
+            reactions += { case c:ButtonClicked => player.play }
+            maximumSize = new Dimension(800, 20)
+          },
+          new Constraints{ grid = (0,0); anchor = GridBagPanel.Anchor.LineStart; fill = GridBagPanel.Fill.Horizontal; weightx = 1.0}
+        )
+        this.add(new Button("Pause"){ 
+            reactions += { case c:ButtonClicked => player.pause }
+            maximumSize = new Dimension(800, 20)
+          },
+          new Constraints{ grid = (1,0); fill = GridBagPanel.Fill.Horizontal; weightx = 1.0}
+        )
+        this.add(
+          songPositionPanel,
+          new Constraints{ grid = (0,1); gridwidth = 2; anchor = GridBagPanel.Anchor.LineStart; fill = GridBagPanel.Fill.Horizontal; weightx = 1.0}
+        )
       }
       this.bottomComponent = new ScrollPane(){
         this.contents = songListPanel
@@ -88,7 +114,13 @@ object MusicGenUI extends SimpleSwingApplication {
     }
     this.rightComponent = new BoxPanel(Orientation.Horizontal){
       this._contents += songInfoPanel
-      this._contents += specPanel.panel
+      this._contents += new BoxPanel(Orientation.Vertical){
+        songNotesPanel.maximumSize = new Dimension(1000,800)
+        this._contents += songNotesPanel
+        
+        specPanel.panel.maximumSize = new Dimension(cWidth, cHeight)
+        this._contents += specPanel.panel 
+      }
     }
     
     //init song list
@@ -107,31 +139,41 @@ object MusicGenUI extends SimpleSwingApplication {
     contents = ui
   }
   
+  def nextSong() = {
+    setSong((curSong+1) % songs.songs.size)
+  }
+  
   def setSong(ind:Int) = {
     if(curSong != ind) {
       curSong = ind
       
       songListPanel.contents.zipWithIndex.foreach { case(songButton,ind) =>
-        songButton.background = new Color(0.1f,0.1f,0.1f)
-        songButton.foreground = new Color(0.9f,0.9f,0.9f)
-        
-        if(ind == curSong) {
-          songButton.background = new Color(1.0f,1.0f,1.0f)
-          songButton.foreground = new Color(0.0f,0.0f,0.0f)
-        }
+        setSelectedStyle(songButton, ind == curSong)
       }
         
-      val songFilePath = songUtil.getFullSongPath(songs(curSong))
+      val songFilePath = songUtil.getFullSongPath(songs.songs(curSong))
       val file = songFilePath.toFile
-      player.changeAudioSource(new AudioInputStreamAudioStream(AudioSystem.getAudioInputStream(file)))
+      val audioInputStream = AudioSystem.getAudioInputStream(file)
+      println(s"Song sample rate: ${audioInputStream.getFormat.getSampleRate}")
+      val songLength = ((audioInputStream.getFrameLength / audioInputStream.getFormat.getFrameRate) * audioInputStream.getFormat.getSampleRate).ceil.toInt
       
-      updateSongInfoPanel(songs(curSong))
+      val songLengthFrames = audioInputStream.getFrameLength
+      
+      println(s"Song Length Method 1: ${songLength}")
+      println(s"Song Length Method 2: ${songLengthFrames}")
+      
+      songPositionPanel.reset(songLength)
+      songNotesPanel.reset(songUtil.getSongDef(songs.songs(curSong)), songLength)
+      
+      player.changeAudioSource(new AudioInputStreamAudioStream(audioInputStream))
+      
+      updateSongInfoPanel(songs.songs(curSong))
       
     }
   }
   
   def setSelectedStyle(c:Component, selected:Boolean):Unit = {
-    if(!selected) {
+    if(selected) {
       c.background = new Color(1.0f,1.0f,1.0f)
       c.foreground = new Color(0.0f,0.0f,0.0f)
     }
@@ -219,10 +261,30 @@ object MusicGenUI extends SimpleSwingApplication {
       }
     }
     songInfoPanel.contents += new ScrollPane(){
+      val songDef = songUtil.getSongDef(songInfo)
+      val noteInfo = songDef.notes.map{ synth =>
+        s"""Synth: ${synth._1}
+        |  SynthDef: 
+        |    ${synth._2.prettyPrint().split("\n").mkString("\n      ")}
+        |  Instruments: ${synth._3.zipWithIndex.map(i => "instrument-"+i._2+": "+i._1).mkString("\n    ", "\n    ","")}
+        """.stripMargin
+      }
+      
+      val songLength = songDef.notes.map(_._3).flatten.map(_.length).max * songDef.noteLengthMult
+      val songMinutes = songLength.toInt / 60
+      val songSeconds = songLength - songMinutes*60
+      val songSecondsStr = if(songSeconds<10) "0"+songSeconds else ""+songSeconds
+      
       contents = new TextArea() {
-        text = s"${songInfo}"
+        text = s"""Song: ${songInfo.songFile}
+          |BPM: ${songDef.bpm}
+          |Length: ${songMinutes}:${songSecondsStr}
+          |
+          |  ${noteInfo.mkString("\n  ")}
+          |""".stripMargin
         editable = false
         peer.setCaretPosition(0)
+        peer.setFont(new Font("monospaced", Font.PLAIN, 12));
       }
     }
     
@@ -230,14 +292,17 @@ object MusicGenUI extends SimpleSwingApplication {
   }
   
   def updateSongInfo(updatedSong:GenSongInfo):Unit = {
-    songs = songs.map{ s =>
+    songs = songs.copy(songs = songs.songs.map{ s =>
       if(s.songFile == updatedSong.songFile) {
         updatedSong
       }
       else {
         s
       }
-    }
+    })
+    
+    
+    songUtil.saveCurrentGenSongs(songs)
     
     updateSongInfoPanel(updatedSong)
   }
@@ -246,14 +311,8 @@ object MusicGenUI extends SimpleSwingApplication {
     new BoxPanel(Orientation.Horizontal){
       contents ++= (1 to 5).toSeq.map{ buttonInd =>
         new Button(s"${buttonInd}"){
-          if(rating.getOrElse(0) >= buttonInd) {
-            background = new Color(1.0f,1.0f,1.0f)
-            foreground = new Color(0.0f,0.0f,0.0f)
-          }
-          else {
-            background = new Color(0.1f,0.1f,0.1f)
-            foreground = new Color(0.9f,0.9f,0.9f)
-          }
+          setSelectedStyle(this, rating.getOrElse(0) >= buttonInd)
+          
           reactions += { 
             case c:ButtonClicked => 
               onUpdate(buttonInd)
@@ -269,10 +328,10 @@ object MusicGenUI extends SimpleSwingApplication {
   def initializeSongList() = {
     val genInfo = songUtil.getCurrentGenSongs()
     
-    songs = genInfo.songs
+    songs = genInfo
     
     songListPanel.contents.clear()
-    songs.zipWithIndex.foreach{ case (songInfo,ind) =>
+    songs.songs.zipWithIndex.foreach{ case (songInfo,ind) =>
       songListPanel.contents += new Button(songInfo.songFile){ 
         reactions += { 
           case c:ButtonClicked => 
@@ -281,6 +340,7 @@ object MusicGenUI extends SimpleSwingApplication {
         maximumSize = new Dimension(800, 20)
       }
     }
+    
     
     setSong(0)
   }

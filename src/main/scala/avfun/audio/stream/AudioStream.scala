@@ -18,7 +18,7 @@ trait AudioStream {
  * A chunk of audio data. Contains the number of samples in the chunk
  * and a IndexedSeq of Float Arrays containing the audio data for each channel.
  */
-case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]]){
+case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]], streamPosition:Option[Float]){
   
   /**
    * Extends the amount of samples in the StreamData by extending zeros to
@@ -37,7 +37,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]])
         newD
       }
       
-      StreamData(samples + additionalSamples, newCData)
+      StreamData(samples + additionalSamples, newCData, streamPosition)
     }
   }
   
@@ -54,7 +54,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]])
     else{
       val newData = new Array[Float](samples)
       if(channels == 0){
-        StreamData(samples, Array(newData))
+        StreamData(samples, Array(newData), streamPosition)
       }
       else{
         channelData.foreach{cd =>
@@ -72,7 +72,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]])
           i += 1
         }
         
-        StreamData(samples, Array(newData))
+        StreamData(samples, Array(newData), streamPosition)
       }
     }
   }
@@ -104,7 +104,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]])
           for(i <- 0 until n){
             channelData(i) = monoData
           }
-          StreamData(this.samples, channelData)
+          StreamData(this.samples, channelData, streamPosition)
         }
       }
     }
@@ -118,6 +118,6 @@ object StreamData{
       new Array[Float](samples)
     }
     
-    StreamData(samples, cData)
+    StreamData(samples, cData, None)
   }
 }

@@ -12,9 +12,13 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
   val bigEndian = af.isBigEndian()
   
   val samplesPerSecond:Int = af.getSampleRate.toInt
+  
+  private var totalSamples = is.getFrameLength
+  private var readSamples = 0
 
   def resetStream = {
     is.reset()
+    readSamples = 0
   }
   
   def closeStream = {
@@ -43,7 +47,6 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
   }
   
   def read(samples:Int):Option[StreamData] = {
-    
     val bufferSize = samples * af.getFrameSize
      
     val buffer = new Array[Byte](bufferSize)
@@ -51,6 +54,8 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
     val read = is.read(buffer)
     
     val framesRead = read / af.getFrameSize
+    
+    readSamples += samples
     
     val chData = (0 until channels).map(i => new Array[Float](framesRead)).toIndexedSeq
     
@@ -75,7 +80,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
       None
     }
     else{
-      Some(new StreamData(framesRead, chData))
+      Some(new StreamData(framesRead, chData, (if(totalSamples!=0) Some(readSamples.toFloat / totalSamples.toFloat) else None)))
     }
     
   }
@@ -83,7 +88,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
   def readOrEmptyData[T](samples:Int):StreamData = {
     read(samples).getOrElse{
       val chData = (0 until channels).map(i => new Array[Float](0)).toIndexedSeq
-      new StreamData(0, chData)
+      new StreamData(0, chData, None)
     }
   }
   

@@ -17,6 +17,7 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
   
   private var _streamClosed = false
   private var _bufferedSamples = 0
+  private var _streamPosition:Option[Float] = None
   private val _buffer = new Array[Array[Float]](channels)
   for(i <- 0 until channels){
     _buffer(i) = new Array[Float](bufferedSamples)
@@ -27,6 +28,8 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
     
     if(newData.isDefined){
       val data = newData.get
+    
+      _streamPosition = data.streamPosition
       
       //println(s"${new java.util.Date().getTime} - Read ${data.samples} samples.")
       
@@ -65,7 +68,7 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
       val readSamples = (0 until channels) map { i =>
         Arrays.copyOf(_buffer(i), toRead)
       }
-      Some(StreamData(toRead, readSamples))
+      Some(StreamData(toRead, readSamples, _streamPosition))
     }
   }
 
