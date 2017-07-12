@@ -9,16 +9,32 @@ trait AudioStream {
   val channels:Int
   val samplesPerSecond:Int
   
+  def totalSamples:Option[Int]
+  
   def read(samples:Int):Option[StreamData]
   def close:Unit
   
+}
+
+case class StreamSourceInfo(totalSamples:Option[Int], samplesRead:Option[Int]) {
+  def getStreamPosition:Option[Float] = {
+    totalSamples.filter(_ > 0).flatMap( total =>
+      samplesRead.map{ read =>
+        read.toFloat / total.toFloat
+      }
+    )
+  }
+}
+
+object StreamSourceInfo {
+  val InfinitStream = StreamSourceInfo(None, None)
 }
 
 /**
  * A chunk of audio data. Contains the number of samples in the chunk
  * and a IndexedSeq of Float Arrays containing the audio data for each channel.
  */
-case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]], streamPosition:Option[Float]){
+case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]], streamSourceInfo:StreamSourceInfo){
   
   /**
    * Extends the amount of samples in the StreamData by extending zeros to
@@ -37,7 +53,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]],
         newD
       }
       
-      StreamData(samples + additionalSamples, newCData, streamPosition)
+      StreamData(samples + additionalSamples, newCData, streamSourceInfo.copy(totalSamples = streamSourceInfo.totalSamples.map(_+additionalSamples)))
     }
   }
   
@@ -54,7 +70,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]],
     else{
       val newData = new Array[Float](samples)
       if(channels == 0){
-        StreamData(samples, Array(newData), streamPosition)
+        StreamData(samples, Array(newData), streamSourceInfo)
       }
       else{
         channelData.foreach{cd =>
@@ -72,7 +88,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]],
           i += 1
         }
         
-        StreamData(samples, Array(newData), streamPosition)
+        StreamData(samples, Array(newData), streamSourceInfo)
       }
     }
   }
@@ -104,7 +120,7 @@ case class StreamData(val samples:Int, val channelData:IndexedSeq[Array[Float]],
           for(i <- 0 until n){
             channelData(i) = monoData
           }
-          StreamData(this.samples, channelData, streamPosition)
+          StreamData(this.samples, channelData, streamSourceInfo)
         }
       }
     }
@@ -118,6 +134,6 @@ object StreamData{
       new Array[Float](samples)
     }
     
-    StreamData(samples, cData, None)
+    StreamData(samples, cData, StreamSourceInfo.InfinitStream)
   }
 }

@@ -13,7 +13,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
   
   val samplesPerSecond:Int = af.getSampleRate.toInt
   
-  private var totalSamples = is.getFrameLength
+  val totalSamples = Some(is.getFrameLength.toInt)
   private var readSamples = 0
 
   def resetStream = {
@@ -55,7 +55,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
     
     val framesRead = read / af.getFrameSize
     
-    readSamples += samples
+    readSamples += framesRead
     
     val chData = (0 until channels).map(i => new Array[Float](framesRead)).toIndexedSeq
     
@@ -80,7 +80,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
       None
     }
     else{
-      Some(new StreamData(framesRead, chData, (if(totalSamples!=0) Some(readSamples.toFloat / totalSamples.toFloat) else None)))
+      Some(new StreamData(framesRead, chData, (if(totalSamples.getOrElse(0)!=0) StreamSourceInfo(totalSamples, Some(readSamples)) else StreamSourceInfo.InfinitStream)))
     }
     
   }
@@ -88,7 +88,7 @@ class AudioInputStreamAudioStream(is:AudioInputStream) extends AudioStream {
   def readOrEmptyData[T](samples:Int):StreamData = {
     read(samples).getOrElse{
       val chData = (0 until channels).map(i => new Array[Float](0)).toIndexedSeq
-      new StreamData(0, chData, None)
+      new StreamData(0, chData, StreamSourceInfo.InfinitStream)
     }
   }
   

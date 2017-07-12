@@ -63,9 +63,13 @@ object MusicGenUI extends SimpleSwingApplication {
   var curSong = -1
   
   val songPositionPanel = new SongProgressBar()
-  songPositionPanel.onSongProgress{ p => if(p > 1.0f) this.nextSong() }
+  songPositionPanel.onSongProgress{ p => 
+    if(p > 1.0f) {
+      MusicGenUI.nextSong()
+    }
+  }
   
-  val songNotesPanel = new SongNotesPlayerVisualizer()
+  val songNotesPanel = new SongNotesPlayerVisualizer(latencyInSamples = 6000)
   
   val player = new Player(){
     override def timer = new ThreadBasedTimer
@@ -162,10 +166,14 @@ object MusicGenUI extends SimpleSwingApplication {
       println(s"Song Length Method 1: ${songLength}")
       println(s"Song Length Method 2: ${songLengthFrames}")
       
+      val paused = player.isPaused
+      player.pause
       songPositionPanel.reset(songLength)
       songNotesPanel.reset(songUtil.getSongDef(songs.songs(curSong)), songLength)
-      
       player.changeAudioSource(new AudioInputStreamAudioStream(audioInputStream))
+      if(!paused) {
+        player.play
+      }
       
       updateSongInfoPanel(songs.songs(curSong))
       
@@ -270,7 +278,9 @@ object MusicGenUI extends SimpleSwingApplication {
         """.stripMargin
       }
       
-      val songLength = songDef.notes.map(_._3).flatten.map(_.length).max * songDef.noteLengthMult
+      val lastOfAllNotes = songDef.notes.flatMap(_._3.map(_.notes.lastOption)).filter(_.isDefined).map(n => n.get.time + n.get.dur).max
+      
+      val songLength = lastOfAllNotes * songDef.noteLengthMult
       val songMinutes = songLength.toInt / 60
       val songSeconds = songLength - songMinutes*60
       val songSecondsStr = if(songSeconds<10) "0"+songSeconds else ""+songSeconds

@@ -14,13 +14,14 @@ import avfun.supercollider.MusicScale.OctaveStartIndicator
 import avfun.supercollider.MusicScale.OctaveNoIndicator
 import java.awt.Font
 
-class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFutureBars:Float = 6f)  extends Panel with AudioFrameListener{
+class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFutureBars:Float = 6f, latencyInSamples:Int = 0)  extends Panel with AudioFrameListener{
   override val requiredSamplesPerFrame: Int = 0
   
   
   private var _songDef:SongDef = null
-  private var _songLengthInSamples = 0
-  private var _songPositionInSamples = 0
+  private var _songLengthInSamplesFromSongDef = 0f
+  //private var _songLengthInSamples = 0
+  //private var _songPositionInSamples = 0
   private var _songPosition = 0f
   
   private var _maxNote = 100
@@ -29,9 +30,11 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
   private var _notesRemaining:Seq[(PatternDef, Seq[NoteEvent])] = Seq()
     
   def onFrameData(frameData:AudioFrameData):Unit = {
-    _songPositionInSamples += frameData.samplesPerFrame
-    //_songPosition = if(_songLengthInSamples == 0) 0.0f else _songPositionInSamples.toFloat / _songLengthInSamples.toFloat
-    _songPosition = frameData.streamPosition.getOrElse(0f)
+    val songPositionInSamples = (frameData.audioData.streamSourceInfo.samplesRead.getOrElse(0)-latencyInSamples)
+    val maxSongLengthSamples = frameData.audioData.streamSourceInfo.totalSamples.getOrElse(0)
+    println(s"${frameData.audioData.streamSourceInfo}")
+    _songPosition = if(maxSongLengthSamples == 0) 0.0f else songPositionInSamples.toFloat / math.min(maxSongLengthSamples.toFloat, _songLengthInSamplesFromSongDef.toFloat)
+    //_songPosition = frameData.streamPosition.getOrElse(0f)
     
     if(_songDef != null) {
       _notesRemaining = _notesRemaining.map{ case(patternData, notes) => 
@@ -72,7 +75,7 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
     val currentBar = math.floor(barsPosition)
     
     val noteRange = _maxNote - _minNote +1
-    val noteHeight = height / noteRange.toFloat
+    val noteHeight = math.max(height / noteRange.toFloat, 2f)
     
     
     val fontHeight = math.min(20, (noteHeight*.75).toInt)
@@ -97,7 +100,7 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
     
     val totalBarsDisplayed = displayPlayedBars+displayFutureBars
     
-    val instNoteHeight = math.max(1, noteHeight / _notesRemaining.size)
+    val instNoteHeight = math.max(4, noteHeight / _notesRemaining.size)
     //Draw Notes
     for{
       inst <- 0 until _notesRemaining.size
@@ -106,12 +109,13 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
       val instColor = instColors(inst % instColors.size)
       g.setColor(instColor)
       val pattern = _notesRemaining(inst)
-      for(note <- pattern._2.takeWhile(ne => (ne.time + ne.dur) < (barsPosition + displayFutureBars))) {
+      for(note <- pattern._2.takeWhile(ne => (ne.time + ne.dur) < (barsPosition + displayFutureBars + 1))) {
         val midiNote = MusicScale.freqToMidi(note.freq)
         val x = ((displayPlayedBars + note.time - barsPosition) * width/totalBarsDisplayed).toInt
         val length = ((note.dur) * width/totalBarsDisplayed).toInt
         val laneStart = (height - (midiNote-_minNote)*noteHeight).toInt
         g.fillRect(x, laneStart + (instNoteHeight * inst).toInt, length, instNoteHeight.toInt)
+        g.fillRect(x, laneStart + (instNoteHeight * inst).toInt - (instNoteHeight/4).toInt, 5, (1.5*instNoteHeight).toInt)
       }
     }
     
@@ -126,10 +130,13 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
   }
   
   def reset(songDef:SongDef, songLengthInSamples:Int, songPositionInSamples:Int = 0):Unit = {
-    _songPositionInSamples = songPositionInSamples
-    _songLengthInSamples = songLengthInSamples
+    //_songPositionInSamples = songPositionInSamples
+    //_songLengthInSamples = songLengthInSamples
     
     _songDef = songDef
+    
+    val lastOfAllNotes = _songDef.notes.flatMap(_._3.map(_.notes.lastOption)).filter(_.isDefined).map(n => n.get.time + n.get.dur).max
+    _songLengthInSamplesFromSongDef = (lastOfAllNotes * _songDef.noteLengthMult * 44100).toInt
     
     var maxFreq = 0f
     var minFreq = 100000f
@@ -148,15 +155,15 @@ class SongNotesPlayerVisualizer(val displayPlayedBars:Float = 1f, val displayFut
       (patDef, patDef.notes)
     }
      
-    if(minFreq<100000) {
-      _minNote = MusicScale.freqToMidi(minFreq)
+    if(minFreq<50000) {
+      _minNote = MusicScale.freqToMidi(minFreq)-2
     }
     else {
       _minNote = 0
     }
     
     if(maxFreq> 0) {
-      _maxNote = MusicScale.freqToMidi(maxFreq)
+      _maxNote = MusicScale.freqToMidi(maxFreq)+2
     }
     else {
       _maxNote = _minNote+20

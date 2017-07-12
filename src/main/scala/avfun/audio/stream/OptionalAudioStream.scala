@@ -14,6 +14,8 @@ class OptionalAudioStream(override val samplesPerSecond:Int, override val channe
   private var _innerStream:Option[AudioStream] = None
   private val _lock = new AnyRef
 
+  def totalSamples:Option[Int] = _innerStream.flatMap(_.totalSamples)
+  
   def read(samples: Int): Option[StreamData] = {
     val stream = _innerStream
     

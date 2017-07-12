@@ -16,6 +16,7 @@ import java.util.Date
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import avfun.audio.stream.AudioStream
+import avfun.audio.stream.StreamSourceInfo
 
 abstract class Player extends AudioFrameProducer {
   import Player.logger
@@ -41,36 +42,37 @@ abstract class Player extends AudioFrameProducer {
   private def timerIntervalFunction():Unit = { 
     if(_bufferedAS == null){
       _bufferedAS = new BufferedAudioStream(_as, maxBufferedAudioSamples(minSamplesPerFrame))
+      
+      //Read some data into the buffer
+      _bufferedAS.resetUnderlyingStream()
+      _bufferedAS.getBufferedSamples(minSamplesPerFrame)
     }
     
     val t1 = new Date().getTime;
     
     val numSamples = _bufferedAS.bufferedSamples
     
-    //Read some data into the buffer
-    _bufferedAS.read(minSamplesPerFrame)
-    
-    val frameSamples:Option[(IndexedSeq[Array[Float]], Option[Float])] = _bufferedAS.getBufferedSamples(numSamples).map{data =>
+    val frameSamples:Option[(IndexedSeq[Array[Float]], StreamSourceInfo)] = _bufferedAS.read(numSamples).map{data =>
       if(data.samples < numSamples){
         val channelData = (0 until _as.channels) map { ch =>
           val arr = new Array[Float](numSamples)
           System.arraycopy(data.channelData(ch), 0, arr, 0, data.samples)
           arr
         }
-        (channelData, data.streamPosition)
+        (channelData, data.streamSourceInfo)
       }
       else{
-        (data.channelData, data.streamPosition)
+        (data.channelData, data.streamSourceInfo)
       }
     }
     
     val frameData = frameSamples match {
-      case Some((sd:IndexedSeq[Array[Float]], streamPosition:Option[Float])) => {
-        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, sd, streamPosition), false, streamPosition) 
+      case Some((sd:IndexedSeq[Array[Float]], streamSourceInfo:StreamSourceInfo)) => {
+        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, sd, streamSourceInfo), false, streamSourceInfo.getStreamPosition) 
       }
       case None =>{
         val data = (0 until _as.channels) map { ch => new Array[Float](numSamples) }
-        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, data, None), true, None)
+        AudioFrameData(framerate, minSamplesPerFrame, samplesPerSecond, _as.channels, StreamData(numSamples, data, StreamSourceInfo.InfinitStream), true, None)
       }
     }
     
@@ -98,6 +100,12 @@ abstract class Player extends AudioFrameProducer {
   
   def changeAudioSource(streamSource:AudioStream):Unit = {
     _as.setStream(streamSource)
+   
+    if(_bufferedAS != null) {
+      //Read some data into the buffer
+      _bufferedAS.resetUnderlyingStream()
+      _bufferedAS.getBufferedSamples(minSamplesPerFrame)
+    }
   }
 }
 

@@ -17,11 +17,13 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
   
   private var _streamClosed = false
   private var _bufferedSamples = 0
-  private var _streamPosition:Option[Float] = None
+  private var _streamSourceInfo:StreamSourceInfo = StreamSourceInfo.InfinitStream
   private val _buffer = new Array[Array[Float]](channels)
   for(i <- 0 until channels){
     _buffer(i) = new Array[Float](bufferedSamples)
   }
+  
+  def totalSamples = _streamSourceInfo.totalSamples
   
   private def readIntoBuffer(samples:Int):Unit = {
     val newData = as.read(samples)
@@ -29,8 +31,6 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
     if(newData.isDefined){
       val data = newData.get
     
-      _streamPosition = data.streamPosition
-      
       //println(s"${new java.util.Date().getTime} - Read ${data.samples} samples.")
       
       val remainingSpace = bufferedSamples - _bufferedSamples
@@ -58,6 +58,11 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
     
   }
   
+  def resetUnderlyingStream():Unit = {
+    _bufferedSamples = 0
+    _streamSourceInfo = StreamSourceInfo.InfinitStream
+  }
+  
   def getBufferedSamples(samples:Int):Option[StreamData] = {
     if(_streamClosed){
       None
@@ -68,7 +73,16 @@ class BufferedAudioStream(val as:AudioStream, val bufferedSamples:Int) extends A
       val readSamples = (0 until channels) map { i =>
         Arrays.copyOf(_buffer(i), toRead)
       }
-      Some(StreamData(toRead, readSamples, _streamPosition))
+      
+      _streamSourceInfo = if(as.totalSamples.isDefined) {
+        val totalRead = _streamSourceInfo.samplesRead.getOrElse(0) + toRead
+        new StreamSourceInfo(as.totalSamples, Some(totalRead))
+      }
+      else {
+        StreamSourceInfo.InfinitStream
+      }
+      
+      Some(StreamData(toRead, readSamples, _streamSourceInfo))
     }
   }
 
